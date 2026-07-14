@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function teacherEnabled() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/authorizedTeachers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/authorizedTeachers/$(request.auth.uid)).data.enabled == true;
+    }
+
+    match /authorizedTeachers/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /teachers/{teacherId} {
+      allow read, write: if teacherEnabled() && request.auth.uid == teacherId;
+
+      match /students/{studentId} {
+        allow read, write: if teacherEnabled() && request.auth.uid == teacherId;
+
+        match /records/{recordId} {
+          allow read, write: if teacherEnabled() && request.auth.uid == teacherId;
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

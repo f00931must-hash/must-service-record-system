@@ -1,0 +1,68 @@
+:root{
+  --navy:#112f4d;
+  --sky:#49bff2;
+  --bg:#f4f9ff;
+  --card:#fff;
+  --line:#dbeafe;
+  --text:#172033;
+  --muted:#6b7280;
+  --danger:#dc2626;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--text)}
+.hidden{display:none!important}
+.login-view{min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#edf8ff,#fff)}
+.login-card{width:min(460px,calc(100% - 28px));padding:42px;border-radius:28px;background:#fff;text-align:center;box-shadow:0 18px 55px rgba(17,47,77,.14)}
+.logo,.mini-logo{display:grid;place-items:center;background:linear-gradient(135deg,#69d0f7,#35aee6);color:#fff;font-weight:900}
+.logo{width:70px;height:70px;border-radius:22px;margin:0 auto 20px;font-size:30px}
+.mini-logo{width:44px;height:44px;border-radius:14px}
+.login-card h1{font-size:28px;margin:0 0 8px}
+.login-card p{color:var(--muted);margin-bottom:24px}
+.back-link{display:block;margin-top:16px}
+.app{min-height:100vh;display:grid;grid-template-columns:240px 1fr}
+.sidebar{background:var(--navy);color:#fff;padding:22px 14px;display:flex;flex-direction:column;gap:8px}
+.brand{display:flex;align-items:center;gap:12px;padding:0 8px 22px}
+.brand span{display:block;color:#bfd6e8;font-size:13px}
+.nav{border:0;background:transparent;color:#fff;text-align:left;padding:14px 16px;border-radius:14px;font-size:16px;font-weight:700;cursor:pointer}
+.nav.active,.nav:hover{background:#0f6f9c}
+.main{padding:28px;min-width:0}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
+.eyebrow{font-size:12px;letter-spacing:.08em;color:#0f6f9c;font-weight:800}
+.topbar h1{margin:5px 0 0}
+.user-area{display:flex;align-items:center;gap:10px}
+.toolbar{display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:18px}
+.field{width:100%;border:1px solid #d7e4ee;border-radius:14px;padding:12px 14px;font:inherit;background:#fff}
+textarea.field{min-height:120px;resize:vertical}
+.primary-btn,.ghost-btn,.danger-btn{border-radius:14px;padding:11px 16px;font:inherit;font-weight:800;cursor:pointer}
+.primary-btn{border:0;background:var(--sky);color:#fff}
+.ghost-btn{border:1px solid #d7e4ee;background:#fff}
+.danger-btn{border:1px solid #fecaca;background:#fff;color:var(--danger)}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.student-card,.panel{background:#fff;border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 8px 22px rgba(15,23,42,.05)}
+.student-card h3{margin:0 0 10px;font-size:21px}
+.meta{color:var(--muted);line-height:1.8}
+.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.modal{position:fixed;inset:0;background:rgba(2,12,25,.58);display:grid;place-items:center;padding:18px;z-index:20}
+.modal-box{position:relative;background:#fff;width:min(900px,100%);max-height:90vh;overflow:auto;border-radius:24px;padding:28px}
+.modal-close{position:absolute;right:18px;top:14px;border:0;background:#f3f4f6;width:38px;height:38px;border-radius:50%;font-size:24px;cursor:pointer}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.form-grid .full{grid-column:1/-1}
+label{font-weight:700;display:block;margin-bottom:5px}
+.check-grid,.radio-grid{display:flex;gap:12px;flex-wrap:wrap}
+.record-table{width:100%;border-collapse:collapse;margin-top:14px}
+.record-table th,.record-table td{border:1px solid #e5e7eb;padding:9px;vertical-align:top}
+.record-table th{background:#eef7ff}
+.ai-box{border:1px dashed #7dd3fc;background:#f0fbff;padding:14px;border-radius:16px}
+.ai-actions{display:flex;gap:8px;margin-top:10px}
+.toast{position:fixed;right:20px;bottom:20px;background:#172033;color:#fff;padding:12px 16px;border-radius:12px;z-index:50}
+.empty{text-align:center;padding:34px;color:var(--muted)}
+.hint{color:var(--muted);font-size:14px}
+@media(max-width:800px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:static;flex-direction:row;overflow:auto}
+  .brand{display:none}
+  .main{padding:18px}
+  .topbar{align-items:flex-start;flex-direction:column}
+  .form-grid{grid-template-columns:1fr}
+  .toolbar{grid-template-columns:1fr}
+}
