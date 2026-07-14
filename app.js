@@ -21,7 +21,7 @@ let recentRecords = [];
 $("loginBtn").onclick = () => signInWithPopup(auth, provider);
 $("logoutBtn").onclick = () => signOut(auth);
 $("modalClose").onclick = closeModal;
-$("addStudentBtn").onclick = openStudentForm;
+$("addStudentBtn").onclick = () => openStudentForm();
 $("studentSearch").oninput = renderStudents;
 $("saveSettingsBtn").onclick = () => {
   localStorage.setItem("service_ai_endpoint", $("aiEndpoint").value.trim());
@@ -99,6 +99,7 @@ function renderStudents(){
 }
 
 function openStudentForm(id=""){
+  if(typeof id !== "string") id = "";
   const s = students.find(x => x.id === id) || {};
   openModal(`
     <h2>${id ? "修改學生資料" : "新增學生"}</h2>
