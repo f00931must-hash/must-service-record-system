@@ -1,4 +1,4 @@
-# MUST Service Record System v0.1
+# MUST Service Record System v0.1.2
 
 第一版功能：
 
@@ -52,3 +52,11 @@ Settings → Pages → Deploy from a branch → main → /(root)
 並將 Worker 網址貼到系統設定中的「AI 安全代理網址」。
 
 AI 只接收內容摘述文字；姓名、學號與學生基本資料不會送出。
+
+## v0.1.1
+- 修正新增學生時，瀏覽器把點擊事件誤當成學生文件 ID，造成 `s.indexOf is not a function`。
+
+## v0.1.2
+- Google 登入加入完整錯誤處理。
+- Popup 被封鎖時改用 Redirect 登入。
+- 網路錯誤與未授權網域會顯示明確提示。

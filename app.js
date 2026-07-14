@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -18,10 +18,38 @@ let currentUser = null;
 let students = [];
 let recentRecords = [];
 
-$("loginBtn").onclick = () => signInWithPopup(auth, provider);
+$("loginBtn").onclick = async () => {
+  const btn = $("loginBtn");
+  btn.disabled = true;
+  btn.textContent = "登入中...";
+  try{
+    await signInWithPopup(auth, provider);
+  }catch(err){
+    console.error("Google login failed", err);
+    const code = err?.code || "";
+    if(code === "auth/popup-blocked" || code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request"){
+      try{
+        await signInWithRedirect(auth, provider);
+        return;
+      }catch(redirectErr){
+        console.error("Redirect login failed", redirectErr);
+        alert("Google 登入失敗：" + (redirectErr.message || redirectErr.code || "未知錯誤"));
+      }
+    }else if(code === "auth/network-request-failed"){
+      alert("目前無法連線到 Google 登入服務。請先確認網路連線，重新整理頁面後再試一次。");
+    }else if(code === "auth/unauthorized-domain"){
+      alert("目前網址尚未加入 Firebase Authentication 的授權網域。請到 Firebase → Authentication → Settings → Authorized domains 新增此 GitHub Pages 網域。");
+    }else{
+      alert("Google 登入失敗：" + (err.message || code || "未知錯誤"));
+    }
+  }finally{
+    btn.disabled = false;
+    btn.textContent = "使用 Google 帳號登入";
+  }
+};
 $("logoutBtn").onclick = () => signOut(auth);
 $("modalClose").onclick = closeModal;
-$("addStudentBtn").onclick = openStudentForm;
+$("addStudentBtn").onclick = () => openStudentForm();
 $("studentSearch").oninput = renderStudents;
 $("saveSettingsBtn").onclick = () => {
   localStorage.setItem("service_ai_endpoint", $("aiEndpoint").value.trim());
@@ -30,6 +58,13 @@ $("saveSettingsBtn").onclick = () => {
 
 document.querySelectorAll(".nav").forEach(btn => btn.onclick = () => switchView(btn.dataset.view));
 $("modal").onclick = e => { if(e.target === $("modal")) closeModal(); };
+
+getRedirectResult(auth).catch(err => {
+  console.error("Google redirect result failed", err);
+  if(err?.code === "auth/network-request-failed"){
+    alert("Google 登入連線失敗，請確認網路後重新整理頁面。");
+  }
+});
 
 onAuthStateChanged(auth, async user => {
   currentUser = user;
@@ -99,6 +134,7 @@ function renderStudents(){
 }
 
 function openStudentForm(id=""){
+  if(typeof id !== "string") id = "";
   const s = students.find(x => x.id === id) || {};
   openModal(`
     <h2>${id ? "修改學生資料" : "新增學生"}</h2>
