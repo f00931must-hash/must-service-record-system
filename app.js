@@ -18,6 +18,25 @@ let currentUser = null;
 let students = [];
 let recentRecords = [];
 
+const DISABILITY_OPTIONS = ["自閉症","情緒障礙","學習障礙","肢體障礙","智能障礙","視覺障礙","聽覺障礙","腦性麻痺","多重障礙"];
+const TARGET_OPTIONS = ["學生本人","家長","導師","授課教師","同儕","校內行政人員","其他"];
+const METHOD_OPTIONS = ["面談","電話","LINE／訊息","電子郵件","會議","到班觀察","其他"];
+const SERVICE_TYPE_OPTIONS = ["關懷與追蹤","學習輔導","生活輔導","心理支持","行政協助","人際關係","轉介與資源連結","合理調整","ISP／個案會議","其他"];
+
+function asArray(value){
+  if(Array.isArray(value)) return value.filter(Boolean);
+  if(value === null || value === undefined || value === "") return [];
+  return [String(value)];
+}
+function displayMulti(value){
+  return asArray(value).join("、");
+}
+function checkboxOptions(name, options, selected=[]){
+  const values = asArray(selected);
+  return options.map(x => `<label class="option-chip"><input type="checkbox" name="${name}" value="${esc(x)}" ${values.includes(x)?"checked":""}> <span>${esc(x)}</span></label>`).join("");
+}
+
+
 $("loginBtn").onclick = async () => {
   const btn = $("loginBtn");
   btn.disabled = true;
@@ -118,7 +137,8 @@ function renderStudents(){
         學號：${esc(s.studentId)}<br>
         科系／班級：${esc(s.department)}<br>
         學制／年級：${esc(s.program || "")} ${esc(s.grade || "")}<br>
-        生理性別：${esc(s.biologicalSex || "")}
+        生理性別：${esc(s.biologicalSex || "")}<br>
+        學生障別：${esc(displayMulti(s.disabilities || s.issues || [])) || "未填"}
       </div>
       <div class="card-actions">
         <button class="primary-btn" data-add-record="${s.id}">新增服務紀錄</button>
@@ -136,6 +156,7 @@ function renderStudents(){
 function openStudentForm(id=""){
   if(typeof id !== "string") id = "";
   const s = students.find(x => x.id === id) || {};
+  const existingDisabilities = s.disabilities || s.issues || [];
   openModal(`
     <h2>${id ? "修改學生資料" : "新增學生"}</h2>
     <form id="studentForm" class="form-grid">
@@ -145,8 +166,13 @@ function openStudentForm(id=""){
       <div><label>科系／班級</label><input name="department" class="field" value="${esc(s.department||"")}"></div>
       <div><label>學制</label><input name="program" class="field" value="${esc(s.program||"")}"></div>
       <div><label>年級</label><input name="grade" class="field" value="${esc(s.grade||"")}"></div>
-      <div class="full"><label>問題類型</label>
-        <div class="check-grid">${["心理困擾","精神疾病","感情交往","人際關係","生涯學習","行為問題","諮詢服務","申訴事件","其他"].map(x => `<label><input type="checkbox" name="issues" value="${x}" ${(s.issues||[]).includes(x)?"checked":""}> ${x}</label>`).join("")}</div>
+      <div class="full">
+        <label>學生障別</label>
+        <div class="option-grid">${checkboxOptions("disabilities",DISABILITY_OPTIONS,existingDisabilities)}</div>
+      </div>
+      <div class="full">
+        <label>備註</label>
+        <textarea name="studentNote" class="field" placeholder="例如：障別補充、學習特性或其他需要記錄的資訊。">${esc(s.studentNote||"")}</textarea>
       </div>
       <div class="full card-actions">
         <button class="primary-btn" type="submit">儲存學生資料</button>
@@ -165,7 +191,8 @@ function openStudentForm(id=""){
       department: fd.get("department"),
       program: fd.get("program"),
       grade: fd.get("grade"),
-      issues: fd.getAll("issues"),
+      disabilities: fd.getAll("disabilities"),
+      studentNote: fd.get("studentNote") || "",
       updatedAt: serverTimestamp()
     };
     if(id) await updateDoc(doc(db,"teachers",currentUser.uid,"students",id),data);
@@ -190,18 +217,31 @@ function openRecordForm(studentId){
   openModal(`
     <h2>新增服務紀錄｜${esc(s.name)}</h2>
     <form id="recordForm" class="form-grid">
-      <div><label>日期</label><input name="date" type="date" class="field" required value="${new Date().toISOString().slice(0,10)}"></div>
-      <div><label>對象</label><select name="target" class="field"><option>學生本人</option><option>家長</option><option>導師</option><option>授課教師</option><option>其他</option></select></div>
-      <div><label>方式</label><select name="method" class="field"><option>面談</option><option>電話</option><option>LINE／訊息</option><option>電子郵件</option><option>會議</option><option>其他</option></select></div>
-      <div><label>類型</label><select name="type" class="field"><option>關懷與追蹤</option><option>學習輔導</option><option>生活輔導</option><option>心理支持</option><option>行政協助</option><option>轉介與資源連結</option><option>其他</option></select></div>
+      <div class="full"><label>日期</label><input name="date" type="date" class="field date-field" required value="${new Date().toISOString().slice(0,10)}"></div>
+
+      <div class="full multi-section">
+        <label>對象（可複選）</label>
+        <div class="option-grid">${checkboxOptions("targets",TARGET_OPTIONS)}</div>
+      </div>
+
+      <div class="full multi-section">
+        <label>方式（可複選）</label>
+        <div class="option-grid">${checkboxOptions("methods",METHOD_OPTIONS)}</div>
+      </div>
+
+      <div class="full multi-section">
+        <label>類型（可複選）</label>
+        <div class="option-grid">${checkboxOptions("types",SERVICE_TYPE_OPTIONS)}</div>
+      </div>
+
       <div class="full ai-box">
         <label>內容摘述</label>
-        <textarea id="summaryInput" name="summary" class="field" placeholder="先用口語輸入這次服務內容，再按 AI 潤飾。" required></textarea>
+        <textarea id="summaryInput" name="summary" class="field summary-editor" placeholder="先用口語輸入這次服務內容，再按 AI 潤飾。" required></textarea>
         <div class="ai-actions">
           <button type="button" id="aiPolishBtn" class="ghost-btn">✨ AI 潤飾內容摘述</button>
           <button type="button" id="restoreOriginalBtn" class="ghost-btn">還原原文</button>
         </div>
-        <p class="hint">AI 只會收到此欄文字，請仍避免輸入學生姓名、學號等直接識別資料。</p>
+        <p class="hint">AI 只會收到此欄文字，不會送出學生姓名、學號、障別或基本資料。</p>
       </div>
       <div class="full"><button class="primary-btn" type="submit">儲存服務紀錄</button></div>
     </form>
@@ -225,6 +265,7 @@ function openRecordForm(studentId){
       if(!res.ok) throw new Error(await res.text());
       const data = await res.json();
       $("summaryInput").value = data.polished || data.text || "";
+      toast("AI 潤飾完成，請確認內容後再儲存");
     }catch(err){
       console.error(err);
       alert("AI 潤飾失敗：" + err.message);
@@ -238,13 +279,19 @@ function openRecordForm(studentId){
   $("recordForm").onsubmit = async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const targets = fd.getAll("targets");
+    const methods = fd.getAll("methods");
+    const types = fd.getAll("types");
+    if(!targets.length) return alert("請至少勾選一個對象。");
+    if(!methods.length) return alert("請至少勾選一個方式。");
+    if(!types.length) return alert("請至少勾選一個類型。");
     await addDoc(collection(db,"teachers",currentUser.uid,"students",studentId,"records"),{
       studentId,
       studentName:s.name,
       date:fd.get("date"),
-      target:fd.get("target"),
-      method:fd.get("method"),
-      type:fd.get("type"),
+      targets,
+      methods,
+      types,
       summary:fd.get("summary"),
       createdAt:serverTimestamp(),
       updatedAt:serverTimestamp()
@@ -259,10 +306,14 @@ async function openStudentRecords(studentId){
   const records = snap.docs.map(d=>({id:d.id,...d.data()}));
   openModal(`
     <h2>${esc(s.name)}｜服務紀錄</h2>
-    <div class="meta">學號：${esc(s.studentId)}　科系／班級：${esc(s.department||"")}　生理性別：${esc(s.biologicalSex||"")}</div>
+    <div class="meta">
+      學號：${esc(s.studentId)}　科系／班級：${esc(s.department||"")}　生理性別：${esc(s.biologicalSex||"")}<br>
+      學生障別：${esc(displayMulti(s.disabilities || s.issues || [])) || "未填"}
+      ${s.studentNote ? `<br>備註：${esc(s.studentNote)}` : ""}
+    </div>
     <table class="record-table">
       <thead><tr><th>次數</th><th>日期</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th><th>操作</th></tr></thead>
-      <tbody>${records.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.date)}</td><td>${esc(r.target)}</td><td>${esc(r.method)}</td><td>${esc(r.type)}</td><td>${esc(r.summary)}</td><td><button class="danger-btn" data-delete-record="${r.id}">刪除</button></td></tr>`).join("")}</tbody>
+      <tbody>${records.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.date)}</td><td>${esc(displayMulti(r.targets || r.target))}</td><td>${esc(displayMulti(r.methods || r.method))}</td><td>${esc(displayMulti(r.types || r.type))}</td><td class="summary-cell">${esc(r.summary)}</td><td><button class="danger-btn" data-delete-record="${r.id}">刪除</button></td></tr>`).join("")}</tbody>
     </table>
     <div class="card-actions">
       <button id="downloadExcelBtn" class="primary-btn">下載服務紀錄表</button>
@@ -285,67 +336,130 @@ async function loadRecentRecords(){
     snap.docs.slice(0,3).forEach(d => recentRecords.push({student:s,...d.data()}));
   }
   recentRecords.sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-  $("recentRecords").innerHTML = recentRecords.length ? `<table class="record-table"><thead><tr><th>日期</th><th>學生</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th></tr></thead><tbody>${recentRecords.slice(0,30).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.student.name)}</td><td>${esc(r.target)}</td><td>${esc(r.method)}</td><td>${esc(r.type)}</td><td>${esc(r.summary)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">目前沒有服務紀錄。</div>';
+  $("recentRecords").innerHTML = recentRecords.length ? `<table class="record-table"><thead><tr><th>日期</th><th>學生</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th></tr></thead><tbody>${recentRecords.slice(0,30).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.student.name)}</td><td>${esc(displayMulti(r.targets || r.target))}</td><td>${esc(displayMulti(r.methods || r.method))}</td><td>${esc(displayMulti(r.types || r.type))}</td><td class="summary-cell">${esc(r.summary)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">目前沒有服務紀錄。</div>';
 }
 
 async function exportStudentWorkbook(student, records){
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("服務紀錄");
-  ws.pageSetup = {paperSize:9, orientation:"portrait", fitToPage:true, fitToWidth:1, fitToHeight:0, margins:{left:0.5,right:0.5,top:0.5,bottom:0.5,header:0.2,footer:0.2}};
+  wb.creator = "MUST Resource Center Service Record System";
+  const ws = wb.addWorksheet("學生服務記錄表", {properties:{defaultRowHeight:20}});
+  ws.pageSetup = {
+    paperSize:9,
+    orientation:"portrait",
+    fitToPage:true,
+    fitToWidth:1,
+    fitToHeight:0,
+    margins:{left:0.28,right:0.28,top:0.3,bottom:0.3,header:0.15,footer:0.15}
+  };
+  ws.pageMargins = {left:0.28,right:0.28,top:0.3,bottom:0.3,header:0.15,footer:0.15};
   ws.columns = [
-    {width:8},{width:13},{width:13},{width:13},{width:13},{width:45}
+    {width:8},{width:13},{width:13},{width:13},{width:13},{width:43}
   ];
+
   ws.mergeCells("A1:F1");
-  ws.getCell("A1").value = "明新科技大學 學務處 健康與諮商中心資源教室\n學生服務記錄表";
+  ws.getCell("A1").value = "明新科技大學　學務處　健康與諮商中心資源教室\n學生服務記錄表";
   ws.getCell("A1").alignment = {horizontal:"center",vertical:"middle",wrapText:true};
   ws.getCell("A1").font = {name:"標楷體",size:18,bold:true};
   ws.getRow(1).height = 48;
 
-  ws.mergeCells("A2:F2"); ws.getCell("A2").value="一、基本資料";
-  ws.getCell("A2").font={name:"標楷體",size:14,bold:true};
+  ws.mergeCells("A2:F2");
+  ws.getCell("A2").value="一、基本資料";
 
   ws.getCell("A3").value="學生姓名"; ws.mergeCells("B3:C3"); ws.getCell("B3").value=student.name;
-  ws.getCell("D3").value="生理性別"; ws.mergeCells("E3:F3"); ws.getCell("E3").value=student.biologicalSex==="男" ? "■ 1. 男  □ 2. 女" : student.biologicalSex==="女" ? "□ 1. 男  ■ 2. 女" : "□ 1. 男  □ 2. 女";
+  ws.getCell("D3").value="生理性別"; ws.mergeCells("E3:F3");
+  ws.getCell("E3").value=student.biologicalSex==="男" ? "■ 1. 男　□ 2. 女" : student.biologicalSex==="女" ? "□ 1. 男　■ 2. 女" : "□ 1. 男　□ 2. 女";
+
   ws.getCell("A4").value="學號"; ws.mergeCells("B4:C4"); ws.getCell("B4").value=student.studentId;
-  ws.getCell("D4").value="科系"; ws.mergeCells("E4:F4"); ws.getCell("E4").value=student.department;
+  ws.getCell("D4").value="科系／班級"; ws.mergeCells("E4:F4"); ws.getCell("E4").value=student.department;
+
   ws.getCell("A5").value="學制"; ws.mergeCells("B5:C5"); ws.getCell("B5").value=student.program;
   ws.getCell("D5").value="年級"; ws.mergeCells("E5:F5"); ws.getCell("E5").value=student.grade;
 
-  ws.mergeCells("A6:B8"); ws.getCell("A6").value="問題類型";
-  const issues=["心理困擾","精神疾病","感情交往","人際關係","生涯學習","行為問題","諮詢服務","申訴事件","其他"];
-  const cells=["C6","D6","F6","C7","D7","F7","C8","D8","F8"];
-  issues.forEach((x,i)=>ws.getCell(cells[i]).value=`${(student.issues||[]).includes(x)?"■":"□"}${i+1}.${x}`);
+  ws.getCell("A6").value="學生障別"; ws.mergeCells("B6:F6");
+  ws.getCell("B6").value=displayMulti(student.disabilities || student.issues || []) || "未填";
+  ws.getCell("A7").value="備註"; ws.mergeCells("B7:F7"); ws.getCell("B7").value=student.studentNote || "";
+
+  const typeCounts = {};
+  records.forEach(r => asArray(r.types || r.type).forEach(t => {
+    if(t) typeCounts[t] = (typeCounts[t] || 0) + 1;
+  }));
+  const typeEntries = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]);
+  ws.mergeCells("A8:B9"); ws.getCell("A8").value="服務類型統計";
+  ws.mergeCells("C8:F9");
+  ws.getCell("C8").value=typeEntries.length
+    ? typeEntries.map(([name,count])=>`${name}：${count} 次`).join("　")
+    : "";
+  ws.getRow(8).height = typeEntries.length > 5 ? 36 : 24;
+  ws.getRow(9).height = typeEntries.length > 5 ? 24 : 18;
 
   ws.mergeCells("A10:F10"); ws.getCell("A10").value="二、服務紀錄";
-  ws.getCell("A10").font={name:"標楷體",size:14,bold:true};
   ["次數","日期","對象","方式","類型","內容摘述"].forEach((x,i)=>ws.getCell(11,i+1).value=x);
 
-  const minRows=Math.max(records.length,10);
+  const minRows=Math.max(records.length,8);
   for(let i=0;i<minRows;i++){
     const row=12+i;
     const r=records[i];
     ws.getCell(row,1).value=i+1;
     if(r){
+      const targets=displayMulti(r.targets || r.target);
+      const methods=displayMulti(r.methods || r.method);
+      const types=displayMulti(r.types || r.type);
+      const summary=String(r.summary || "");
       ws.getCell(row,2).value=r.date;
-      ws.getCell(row,3).value=r.target;
-      ws.getCell(row,4).value=r.method;
-      ws.getCell(row,5).value=r.type;
-      ws.getCell(row,6).value=r.summary;
+      ws.getCell(row,3).value=targets;
+      ws.getCell(row,4).value=methods;
+      ws.getCell(row,5).value=types;
+      ws.getCell(row,6).value=summary;
+
+      const charsPerLine=26;
+      const estimatedLines=Math.max(
+        1,
+        Math.ceil(summary.length/charsPerLine),
+        asArray(r.targets || r.target).length,
+        asArray(r.methods || r.method).length,
+        asArray(r.types || r.type).length
+      );
+      ws.getRow(row).height=Math.max(38, Math.min(165, 18 + estimatedLines*15));
+    }else{
+      ws.getRow(row).height=38;
     }
-    ws.getRow(row).height=45;
   }
 
   const end=11+minRows;
-  ws.getRange = undefined;
   for(let r=2;r<=end;r++){
     for(let c=1;c<=6;c++){
       const cell=ws.getCell(r,c);
       cell.font={...(cell.font||{}),name:"標楷體",size:12};
-      cell.alignment={vertical:"middle",horizontal:c===6?"left":"center",wrapText:true};
-      cell.border={top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"}};
+      cell.alignment={
+        vertical:"middle",
+        horizontal:c===6 || (r===8 && c===3) ? "left" : "center",
+        wrapText:true,
+        shrinkToFit:false
+      };
+      cell.border={
+        top:{style:"thin",color:{argb:"FF000000"}},
+        left:{style:"thin",color:{argb:"FF000000"}},
+        bottom:{style:"thin",color:{argb:"FF000000"}},
+        right:{style:"thin",color:{argb:"FF000000"}}
+      };
     }
   }
-  for(let c=1;c<=6;c++){ ws.getCell(11,c).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFE7E6E6"}}; ws.getCell(11,c).font={name:"標楷體",size:12,bold:true}; }
+
+  [2,10].forEach(r => {
+    ws.getCell(r,1).font={name:"標楷體",size:14,bold:true};
+    ws.getCell(r,1).alignment={horizontal:"left",vertical:"middle"};
+  });
+  for(let c=1;c<=6;c++){
+    ws.getCell(11,c).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFE7E6E6"}};
+    ws.getCell(11,c).font={name:"標楷體",size:12,bold:true};
+  }
+  ["A3","D3","A4","D4","A5","D5","A6","A7","A8"].forEach(addr=>{
+    ws.getCell(addr).font={name:"標楷體",size:12,bold:true};
+  });
+
+  ws.getRow(6).height=24;
+  ws.getRow(7).height=Math.max(24, Math.min(60, 18 + Math.ceil(String(student.studentNote||"").length/50)*15));
+  ws.views=[{showGridLines:false}];
 
   const blob = await wb.xlsx.writeBuffer();
   const a=document.createElement("a");
