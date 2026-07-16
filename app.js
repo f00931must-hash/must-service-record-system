@@ -353,7 +353,12 @@ async function exportStudentWorkbook(student, records){
   };
   ws.pageMargins = {left:0.28,right:0.28,top:0.3,bottom:0.3,header:0.15,footer:0.15};
   ws.columns = [
-    {width:8},{width:13},{width:13},{width:13},{width:13},{width:43}
+    {width:10.5},  // 次數／基本資料標題
+    {width:13.5},  // 日期
+    {width:13.5},  // 對象
+    {width:13.5},  // 方式
+    {width:13.5},  // 類型
+    {width:38.5}   // 內容摘述
   ];
 
   ws.mergeCells("A1:F1");
@@ -411,15 +416,20 @@ async function exportStudentWorkbook(student, records){
       ws.getCell(row,5).value=types;
       ws.getCell(row,6).value=summary;
 
-      const charsPerLine=26;
+      const charsPerLine=23;
+      const manualLines = summary.split(/\r?\n/);
+      const summaryLines = manualLines.reduce((total,line) => {
+        return total + Math.max(1, Math.ceil(String(line).length / charsPerLine));
+      }, 0);
       const estimatedLines=Math.max(
         1,
-        Math.ceil(summary.length/charsPerLine),
+        summaryLines,
         asArray(r.targets || r.target).length,
         asArray(r.methods || r.method).length,
         asArray(r.types || r.type).length
       );
-      ws.getRow(row).height=Math.max(38, Math.min(165, 18 + estimatedLines*15));
+      // Excel 列高以 point 計算；保留完整文字，不再把長內容限制在縮小的格子內。
+      ws.getRow(row).height=Math.max(42, Math.min(390, 16 + estimatedLines*16.5));
     }else{
       ws.getRow(row).height=38;
     }
@@ -430,8 +440,9 @@ async function exportStudentWorkbook(student, records){
     for(let c=1;c<=6;c++){
       const cell=ws.getCell(r,c);
       cell.font={...(cell.font||{}),name:"標楷體",size:12};
+      const isServiceDataRow = r >= 12;
       cell.alignment={
-        vertical:"middle",
+        vertical:isServiceDataRow ? "top" : "middle",
         horizontal:c===6 || (r===8 && c===3) ? "left" : "center",
         wrapText:true,
         shrinkToFit:false
@@ -455,6 +466,7 @@ async function exportStudentWorkbook(student, records){
   }
   ["A3","D3","A4","D4","A5","D5","A6","A7","A8"].forEach(addr=>{
     ws.getCell(addr).font={name:"標楷體",size:12,bold:true};
+    ws.getCell(addr).alignment={horizontal:"center",vertical:"middle",wrapText:false,shrinkToFit:false};
   });
 
   ws.getRow(6).height=24;
