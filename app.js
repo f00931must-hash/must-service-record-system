@@ -339,6 +339,19 @@ async function loadRecentRecords(){
   $("recentRecords").innerHTML = recentRecords.length ? `<table class="record-table"><thead><tr><th>日期</th><th>學生</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th></tr></thead><tbody>${recentRecords.slice(0,30).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.student.name)}</td><td>${esc(displayMulti(r.targets || r.target))}</td><td>${esc(displayMulti(r.methods || r.method))}</td><td>${esc(displayMulti(r.types || r.type))}</td><td class="summary-cell">${esc(r.summary)}</td></tr>`).join("")}</tbody></table>` : '<div class="empty">目前沒有服務紀錄。</div>';
 }
 
+function estimateExcelTextLines(text, capacity=40){
+  const source = String(text || "");
+  if(!source) return 1;
+  return source.split(/\r?\n/).reduce((total, line) => {
+    let units = 0;
+    for(const ch of String(line)){
+      // 中文、日文、韓文及全形字以較寬字元計算。
+      units += /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/.test(ch) ? 2 : 1;
+    }
+    return total + Math.max(1, Math.ceil(units / capacity));
+  }, 0);
+}
+
 async function exportStudentWorkbook(student, records){
   const wb = new ExcelJS.Workbook();
   wb.creator = "MUST Resource Center Service Record System";
@@ -353,12 +366,12 @@ async function exportStudentWorkbook(student, records){
   };
   ws.pageMargins = {left:0.28,right:0.28,top:0.3,bottom:0.3,header:0.15,footer:0.15};
   ws.columns = [
-    {width:10.5},  // 次數／基本資料標題
-    {width:13.5},  // 日期
-    {width:13.5},  // 對象
-    {width:13.5},  // 方式
-    {width:13.5},  // 類型
-    {width:38.5}   // 內容摘述
+    {width:8.5},   // 次數／基本資料標題
+    {width:12.5},  // 日期
+    {width:12.5},  // 對象
+    {width:12.5},  // 方式
+    {width:12.5},  // 類型
+    {width:50}     // 內容摘述
   ];
 
   ws.mergeCells("A1:F1");
@@ -380,9 +393,10 @@ async function exportStudentWorkbook(student, records){
   ws.getCell("A5").value="學制"; ws.mergeCells("B5:C5"); ws.getCell("B5").value=student.program;
   ws.getCell("D5").value="年級"; ws.mergeCells("E5:F5"); ws.getCell("E5").value=student.grade;
 
-  ws.getCell("A6").value="學生障別"; ws.mergeCells("B6:F6");
-  ws.getCell("B6").value=displayMulti(student.disabilities || student.issues || []) || "未填";
-  ws.getCell("A7").value="備註"; ws.mergeCells("B7:F7"); ws.getCell("B7").value=student.studentNote || "";
+  ws.mergeCells("A6:B6"); ws.getCell("A6").value="學生障別";
+  ws.mergeCells("C6:F6"); ws.getCell("C6").value=displayMulti(student.disabilities || student.issues || []) || "未填";
+  ws.mergeCells("A7:B7"); ws.getCell("A7").value="備註";
+  ws.mergeCells("C7:F7"); ws.getCell("C7").value=student.studentNote || "";
 
   const typeCounts = {};
   records.forEach(r => asArray(r.types || r.type).forEach(t => {
@@ -416,11 +430,7 @@ async function exportStudentWorkbook(student, records){
       ws.getCell(row,5).value=types;
       ws.getCell(row,6).value=summary;
 
-      const charsPerLine=23;
-      const manualLines = summary.split(/\r?\n/);
-      const summaryLines = manualLines.reduce((total,line) => {
-        return total + Math.max(1, Math.ceil(String(line).length / charsPerLine));
-      }, 0);
+      const summaryLines = estimateExcelTextLines(summary, 42);
       const estimatedLines=Math.max(
         1,
         summaryLines,
@@ -428,8 +438,10 @@ async function exportStudentWorkbook(student, records){
         asArray(r.methods || r.method).length,
         asArray(r.types || r.type).length
       );
-      // Excel 列高以 point 計算；保留完整文字，不再把長內容限制在縮小的格子內。
-      ws.getRow(row).height=Math.max(42, Math.min(390, 16 + estimatedLines*16.5));
+      // 12pt 標楷體搭配中文內容時，每行預留約 22pt，再加上上下留白。
+      // Excel 單列最高約 409pt，因此長內容直接用到安全上限，避免壓到下一筆。
+      const calculatedHeight = 24 + estimatedLines * 22;
+      ws.getRow(row).height=Math.max(48, Math.min(409, calculatedHeight));
     }else{
       ws.getRow(row).height=38;
     }
@@ -468,9 +480,13 @@ async function exportStudentWorkbook(student, records){
     ws.getCell(addr).font={name:"標楷體",size:12,bold:true};
     ws.getCell(addr).alignment={horizontal:"center",vertical:"middle",wrapText:false,shrinkToFit:false};
   });
+  ["C6","C7"].forEach(addr=>{
+    ws.getCell(addr).alignment={horizontal:"left",vertical:"middle",wrapText:true,shrinkToFit:false};
+  });
 
-  ws.getRow(6).height=24;
-  ws.getRow(7).height=Math.max(24, Math.min(60, 18 + Math.ceil(String(student.studentNote||"").length/50)*15));
+  ws.getRow(6).height=28;
+  const noteLines = estimateExcelTextLines(student.studentNote || "", 75);
+  ws.getRow(7).height=Math.max(28, Math.min(120, 18 + noteLines*20));
   ws.views=[{showGridLines:false}];
 
   const blob = await wb.xlsx.writeBuffer();
