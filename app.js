@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v0.3.6";
+const SERVICE_RECORD_BUILD = "v0.3.7";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
@@ -686,11 +686,17 @@ async function exportStudentWorkbook(student, records){
           O:AD 共 16 個細欄；以 62 個顯示單位估算每行。
           不再額外重複加入換行數，只加固定上下留白。
         */
-        const textLines=estimateExcelTextLines(part,62);
-        const calculatedHeight=8 + textLines*14.6;
+        /*
+          Excel 的標楷體實際換行會比字元估算再多一點，
+          尤其包含全形標點、引號與編號時更容易多換一行。
+          因此每行容量由 62 調低為 56，並增加半行安全高度，
+          只補足最後一行，不會像前版一樣留下大片空白。
+        */
+        const textLines=estimateExcelTextLines(part,56);
+        const calculatedHeight=10 + textLines*15.8;
         ws.getRow(row).height=Math.max(
-          34,
-          Math.min(385, calculatedHeight)
+          35,
+          Math.min(390, calculatedHeight)
         );
       });
 
