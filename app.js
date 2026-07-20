@@ -354,135 +354,273 @@ function estimateExcelTextLines(text, capacity=40){
 
 async function exportStudentWorkbook(student, records){
   try{
-    const response = await fetch("./service-record-template.xlsx", {cache:"no-store"});
-    if(!response.ok) throw new Error("無法載入服務紀錄範本檔案");
-
-    const templateBuffer = await response.arrayBuffer();
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(templateBuffer);
-    const ws = wb.getWorksheet("初始範本") || wb.worksheets[0];
-    if(!ws) throw new Error("範本內找不到工作表");
+    wb.creator = "MUST Resource Center";
+    wb.created = new Date();
 
-    // 基本資料：只填值，不再由程式重畫表格或改欄寬。
-    ws.getCell("B3").value = student.name || "";
-    ws.getCell("E3").value = student.biologicalSex === "男"
-      ? "■ 1. 男　□ 2. 女"
-      : student.biologicalSex === "女"
-        ? "□ 1. 男　■ 2. 女"
-        : "□ 1. 男　□ 2. 女";
-    ws.getCell("B4").value = student.studentId || "";
-    ws.getCell("E4").value = student.department || "";
-    ws.getCell("B5").value = student.program || "";
-    ws.getCell("E5").value = student.grade || "";
-    ws.getCell("C6").value = displayMulti(student.disabilities || student.issues || []) || "未填";
-    ws.getCell("C7").value = student.studentNote || "";
+    const ws = wb.addWorksheet("學生服務記錄表", {
+      properties:{defaultRowHeight:20},
+      pageSetup:{
+        paperSize:9,
+        orientation:"portrait",
+        fitToPage:true,
+        fitToWidth:1,
+        fitToHeight:0,
+        margins:{left:0.2,right:0.2,top:0.25,bottom:0.25,header:0.1,footer:0.1}
+      }
+    });
 
-    // 依所有服務紀錄統計類型，只顯示有出現的項目。
-    const typeCounts = {};
-    records.forEach(r => asArray(r.types || r.type).forEach(type => {
-      if(type) typeCounts[type] = (typeCounts[type] || 0) + 1;
-    }));
-    ws.getCell("C8").value = Object.entries(typeCounts)
+    /*
+      使用 30 個細欄位建立固定版面。
+      基本資料與服務紀錄各自使用不同合併範圍，
+      不會再出現加寬「學生障別」後擠壓「學生姓名」的情況。
+    */
+    for(let c=1;c<=30;c++){
+      ws.getColumn(c).width = 2.8;
+    }
+
+    const border = {
+      top:{style:"thin",color:{argb:"FF000000"}},
+      left:{style:"thin",color:{argb:"FF000000"}},
+      bottom:{style:"thin",color:{argb:"FF000000"}},
+      right:{style:"thin",color:{argb:"FF000000"}}
+    };
+
+    const merge = (row, startCol, endCol, value="") => {
+      ws.mergeCells(row,startCol,row,endCol);
+      const cell=ws.getCell(row,startCol);
+      cell.value=value;
+      return cell;
+    };
+
+    const styleArea = (r1,c1,r2,c2,{
+      size=11,
+      bold=false,
+      horizontal="center",
+      vertical="middle",
+      wrap=true,
+      fill=null
+    }={}) => {
+      for(let r=r1;r<=r2;r++){
+        for(let c=c1;c<=c2;c++){
+          const cell=ws.getCell(r,c);
+          cell.font={name:"標楷體",size,bold};
+          cell.alignment={
+            horizontal,
+            vertical,
+            wrapText:wrap,
+            shrinkToFit:false
+          };
+          cell.border=border;
+          if(fill){
+            cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:fill}};
+          }
+        }
+      }
+    };
+
+    // 標題
+    merge(1,1,30,"明新科技大學　學務處　健康與諮商中心資源教室\n學生服務記錄表");
+    ws.getCell("A1").font={name:"標楷體",size:17,bold:true};
+    ws.getCell("A1").alignment={horizontal:"center",vertical:"middle",wrapText:true};
+    ws.getRow(1).height=45;
+
+    // 一、基本資料
+    merge(2,1,30,"一、基本資料");
+    styleArea(2,1,2,30,{size:13,bold:true,horizontal:"left",wrap:false});
+    ws.getRow(2).height=22;
+
+    // 基本資料欄位：左標題 4 格、左內容 7 格、右標題 4 格、右內容 15 格
+    merge(3,1,4,"學生姓名");
+    merge(3,5,11,student.name || "");
+    merge(3,12,15,"生理性別");
+    merge(3,16,30,
+      student.biologicalSex==="男"
+        ? "■ 1. 男　□ 2. 女"
+        : student.biologicalSex==="女"
+          ? "□ 1. 男　■ 2. 女"
+          : "□ 1. 男　□ 2. 女"
+    );
+
+    merge(4,1,4,"學號");
+    merge(4,5,11,student.studentId || "");
+    merge(4,12,15,"科系／班級");
+    merge(4,16,30,student.department || "");
+
+    merge(5,1,4,"學制");
+    merge(5,5,11,student.program || "");
+    merge(5,12,15,"年級");
+    merge(5,16,30,student.grade || "");
+
+    merge(6,1,4,"學生障別");
+    merge(6,5,30,displayMulti(student.disabilities || student.issues || []) || "未填");
+
+    merge(7,1,4,"備註");
+    merge(7,5,30,student.studentNote || "");
+
+    styleArea(3,1,7,30,{size:11});
+    ["A3","L3","A4","L4","A5","L5","A6","A7"].forEach(addr=>{
+      ws.getCell(addr).font={name:"標楷體",size:11,bold:true};
+      ws.getCell(addr).alignment={
+        horizontal:"center",
+        vertical:"middle",
+        wrapText:false,
+        shrinkToFit:false
+      };
+    });
+    ["E3","P3","E4","P4","E5","P5","E6","E7"].forEach(addr=>{
+      ws.getCell(addr).alignment={
+        horizontal:"left",
+        vertical:"middle",
+        wrapText:true,
+        shrinkToFit:false
+      };
+    });
+
+    ws.getRow(3).height=23;
+    ws.getRow(4).height=23;
+    ws.getRow(5).height=23;
+    ws.getRow(6).height=Math.max(
+      23,
+      Math.min(55, 14 + estimateExcelTextLines(
+        displayMulti(student.disabilities || student.issues || []), 70
+      ) * 15)
+    );
+    ws.getRow(7).height=Math.max(
+      23,
+      Math.min(85, 14 + estimateExcelTextLines(student.studentNote || "",70) * 15)
+    );
+
+    // 服務類型統計
+    const typeCounts={};
+    records.forEach(r=>{
+      asArray(r.types || r.type).forEach(type=>{
+        if(type) typeCounts[type]=(typeCounts[type] || 0)+1;
+      });
+    });
+    const typeText=Object.entries(typeCounts)
       .sort((a,b)=>b[1]-a[1])
-      .map(([name,count]) => `${name}：${count} 次`)
+      .map(([name,count])=>`${name}：${count} 次`)
       .join("　");
 
-    const maxTemplateRows = 60;
-    if(records.length > maxTemplateRows){
-      alert(`目前範本最多輸出 ${maxTemplateRows} 筆紀錄，本次將先輸出前 ${maxTemplateRows} 筆。`);
-    }
-    const outputRecords = records.slice(0,maxTemplateRows);
-    const minDisplayRows = Math.max(outputRecords.length, 8);
+    merge(8,1,7,"服務類型統計");
+    merge(8,8,30,typeText);
+    styleArea(8,1,8,30,{size:11});
+    ws.getCell("A8").font={name:"標楷體",size:11,bold:true};
+    ws.getCell("A8").alignment={horizontal:"center",vertical:"middle",wrapText:false};
+    ws.getCell("H8").alignment={horizontal:"left",vertical:"middle",wrapText:true};
+    ws.getRow(8).height=Math.max(
+      26,
+      Math.min(60, 14 + estimateExcelTextLines(typeText,60) * 15)
+    );
 
-    // 清空範本預留列，再填入實際資料。
-    for(let i=0;i<maxTemplateRows;i++){
-      const rowNumber = 12 + i;
-      const row = ws.getRow(rowNumber);
-      for(let col=1;col<=6;col++) row.getCell(col).value = null;
-      row.height = 38;
-    }
+    // 二、服務紀錄
+    merge(9,1,30,"二、服務紀錄");
+    styleArea(9,1,9,30,{size:13,bold:true,horizontal:"left",wrap:false});
+    ws.getRow(9).height=22;
 
-    outputRecords.forEach((record,index) => {
-      const rowNumber = 12 + index;
-      const row = ws.getRow(rowNumber);
-      const targets = displayMulti(record.targets || record.target);
-      const methods = displayMulti(record.methods || record.method);
-      const types = displayMulti(record.types || record.type);
-      const summary = String(record.summary || "");
+    /*
+      表格欄位：
+      次數 A:B（2欄）
+      日期 C:F（4欄）
+      對象 G:J（4欄）
+      方式 K:N（4欄）
+      類型 O:R（4欄）
+      內容摘述 S:AD（12欄）
+    */
+    merge(10,1,2,"次數");
+    merge(10,3,6,"日期");
+    merge(10,7,10,"對象");
+    merge(10,11,14,"方式");
+    merge(10,15,18,"類型");
+    merge(10,19,30,"內容摘述");
+    styleArea(10,1,10,30,{
+      size:11,
+      bold:true,
+      fill:"FFE7E6E6",
+      wrap:false
+    });
+    ws.getRow(10).height=23;
 
-      row.getCell(1).value = index + 1;
-      row.getCell(2).value = record.date || "";
-      row.getCell(3).value = targets;
-      row.getCell(4).value = methods;
-      row.getCell(5).value = types;
-      row.getCell(6).value = summary;
+    const minRows=Math.max(records.length,8);
 
-      // 只調整內容列高，不動範本欄寬與合併方式。
-      const summaryLines = estimateTemplateLines(summary, 46);
-      const targetLines = estimateTemplateLines(targets, 14);
-      const methodLines = estimateTemplateLines(methods, 14);
-      const typeLines = estimateTemplateLines(types, 14);
-      const neededLines = Math.max(1,summaryLines,targetLines,methodLines,typeLines);
-      row.height = Math.max(38, Math.min(409, 8 + neededLines * 18));
+    for(let i=0;i<minRows;i++){
+      const row=11+i;
 
-      for(let col=1;col<=6;col++){
-        const cell=row.getCell(col);
-        cell.font={name:"標楷體",size:12};
-        cell.alignment={
-          horizontal:col===6 ? "left" : "center",
+      merge(row,1,2,i+1);
+      merge(row,3,6,"");
+      merge(row,7,10,"");
+      merge(row,11,14,"");
+      merge(row,15,18,"");
+      merge(row,19,30,"");
+
+      const r=records[i];
+      let rowHeight=36;
+
+      if(r){
+        const targets=displayMulti(r.targets || r.target);
+        const methods=displayMulti(r.methods || r.method);
+        const types=displayMulti(r.types || r.type);
+        const summary=String(r.summary || "");
+
+        ws.getCell(row,3).value=r.date || "";
+        ws.getCell(row,7).value=targets;
+        ws.getCell(row,11).value=methods;
+        ws.getCell(row,15).value=types;
+        ws.getCell(row,19).value=summary;
+
+        // S:AD 約可容納 22 個中文字／行。
+        const summaryLines=estimateExcelTextLines(summary,44);
+        const targetLines=estimateExcelTextLines(targets,17);
+        const methodLines=estimateExcelTextLines(methods,17);
+        const typeLines=estimateExcelTextLines(types,17);
+        const neededLines=Math.max(
+          1,
+          summaryLines,
+          targetLines,
+          methodLines,
+          typeLines
+        );
+
+        // 11pt 標楷體每行約 15.5pt，僅保留必要空間。
+        rowHeight=Math.max(36,Math.min(409,10+neededLines*15.5));
+      }
+
+      styleArea(row,1,row,30,{size:11,vertical:"top"});
+      [1,3,7,11,15].forEach(col=>{
+        ws.getCell(row,col).alignment={
+          horizontal:"center",
           vertical:"top",
           wrapText:true,
           shrinkToFit:false
         };
-      }
-    });
-
-    // 空白預留列保留最少 8 筆，避免只有一筆時版面太短。
-    for(let i=outputRecords.length;i<minDisplayRows;i++){
-      const row = ws.getRow(12+i);
-      row.getCell(1).value = i+1;
-      row.height = 38;
+      });
+      ws.getCell(row,19).alignment={
+        horizontal:"left",
+        vertical:"top",
+        wrapText:true,
+        shrinkToFit:false
+      };
+      ws.getRow(row).height=rowHeight;
     }
 
-    ws.pageSetup = {
-      ...ws.pageSetup,
-      paperSize:9,
-      orientation:"portrait",
-      fitToPage:true,
-      fitToWidth:1,
-      fitToHeight:0,
-      margins:{left:0.28,right:0.28,top:0.32,bottom:0.32,header:0.15,footer:0.15},
-      printArea:`A1:F${11+minDisplayRows}`,
-      printTitlesRow:"1:11"
-    };
     ws.views=[{showGridLines:false}];
+    ws.pageSetup.printTitlesRow="1:10";
+    ws.printArea=`A1:AD${10+minRows}`;
 
-    const output = await wb.xlsx.writeBuffer();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(new Blob([output],{
+    const buffer=await wb.xlsx.writeBuffer();
+    const link=document.createElement("a");
+    link.href=URL.createObjectURL(new Blob([buffer],{
       type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }));
-    link.download = `${student.name}_服務紀錄表.xlsx`;
+    link.download=`${student.name}_服務紀錄表.xlsx`;
     link.click();
     URL.revokeObjectURL(link.href);
   }catch(err){
-    console.error("Template export failed",err);
+    console.error("Export failed",err);
     alert("服務紀錄表產生失敗：" + (err.message || err));
   }
 }
-
-function estimateTemplateLines(text, capacity){
-  const value=String(text || "");
-  if(!value) return 1;
-  return value.split(/\r?\n/).reduce((total,line)=>{
-    let units=0;
-    for(const ch of String(line)){
-      units += /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/.test(ch) ? 2 : 1;
-    }
-    return total + Math.max(1,Math.ceil(units/capacity));
-  },0);
-}
-
 function switchView(view){
   document.querySelectorAll(".view").forEach(v=>v.classList.add("hidden"));
   $("view-"+view).classList.remove("hidden");
