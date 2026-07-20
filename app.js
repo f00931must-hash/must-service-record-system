@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v0.3.3";
+const SERVICE_RECORD_BUILD = "v0.3.4";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
@@ -30,6 +30,56 @@ function asArray(value){
   if(value === null || value === undefined || value === "") return [];
   return [String(value)];
 }
+
+function currentAcademicYearROC(){
+  const now = new Date();
+  const y = now.getFullYear() - 1911;
+  return now.getMonth() >= 7 ? y : y - 1;
+}
+
+function gradeNumberToText(n){
+  const map = {1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"七"};
+  return map[n] || String(n);
+}
+
+function calculatedGrade(student){
+  const entry = Number(student.entryAcademicYear || 0);
+  if(!entry) return student.grade || "";
+  const n = currentAcademicYearROC() - entry + 1;
+  if(n < 1) return "尚未入學";
+  const prefix = String(student.program || "").includes("研") ? "研" : "大";
+  const suffix = student.gradeSuffix || "";
+  return `${prefix}${gradeNumberToText(n)}${suffix}`;
+}
+
+function splitTextByDisplayUnits(text, maxUnits=820){
+  const source = String(text || "");
+  if(!source) return [""];
+  const parts = [];
+  let current = "";
+  let units = 0;
+
+  const charUnits = ch => /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/.test(ch) ? 2 : 1;
+
+  for(const ch of source){
+    const u = ch === "\n" ? 0 : charUnits(ch);
+    if((units + u > maxUnits) && current){
+      parts.push(current);
+      current = "";
+      units = 0;
+    }
+    current += ch;
+    units += u;
+    if(ch === "\n" && units > maxUnits * 0.82){
+      parts.push(current);
+      current = "";
+      units = 0;
+    }
+  }
+  if(current || !parts.length) parts.push(current);
+  return parts;
+}
+
 function displayMulti(value){
   return asArray(value).join("、");
 }
@@ -131,14 +181,14 @@ async function loadStudents(){
 
 function renderStudents(){
   const key = ($("studentSearch").value || "").trim().toLowerCase();
-  const list = students.filter(s => [s.name,s.studentId,s.department,s.grade].join(" ").toLowerCase().includes(key));
+  const list = students.filter(s => [s.name,s.studentId,s.department,calculatedGrade(s)].join(" ").toLowerCase().includes(key));
   $("studentList").innerHTML = list.length ? list.map(s => `
     <article class="student-card">
       <h3>${esc(s.name)}</h3>
       <div class="meta">
         學號：${esc(s.studentId)}<br>
         科系／班級：${esc(s.department)}<br>
-        學制／年級：${esc(s.program || "")} ${esc(s.grade || "")}<br>
+        學制／年級：${esc(s.program || "")} ${esc(calculatedGrade(s))}<br>
         生理性別：${esc(s.biologicalSex || "")}<br>
         學生障別：${esc(displayMulti(s.disabilities || s.issues || [])) || "未填"}
       </div>
@@ -166,8 +216,11 @@ function openStudentForm(id=""){
       <div><label>生理性別</label><select name="biologicalSex" class="field"><option></option><option ${s.biologicalSex==="男"?"selected":""}>男</option><option ${s.biologicalSex==="女"?"selected":""}>女</option></select></div>
       <div><label>學號</label><input name="studentId" class="field" required value="${esc(s.studentId||"")}"></div>
       <div><label>科系／班級</label><input name="department" class="field" value="${esc(s.department||"")}"></div>
-      <div><label>學制</label><input name="program" class="field" value="${esc(s.program||"")}"></div>
-      <div><label>年級</label><input name="grade" class="field" value="${esc(s.grade||"")}"></div>
+      <div><label>學制</label><input name="program" class="field" value="${esc(s.program||"")}" placeholder="例如：四技、二技、碩士班"></div>
+      <div><label>入學學年度（民國）</label><input id="entryAcademicYearInput" name="entryAcademicYear" type="number" class="field" value="${esc(s.entryAcademicYear||"")}" placeholder="例如：114"></div>
+      <div><label>班級後綴</label><input id="gradeSuffixInput" name="gradeSuffix" class="field" value="${esc(s.gradeSuffix||"")}" placeholder="例如：甲"></div>
+      <div><label>目前年級（自動計算）</label><input id="gradePreview" class="field" readonly value="${esc(calculatedGrade(s))}" placeholder="填入學年度後自動顯示"></div>
+      <div class="full"><label>舊資料年級（僅未填入學年度時使用）</label><input name="grade" class="field" value="${esc(s.grade||"")}" placeholder="例如：大一甲"></div>
       <div class="full">
         <label>學生障別</label>
         <div class="option-grid">${checkboxOptions("disabilities",DISABILITY_OPTIONS,existingDisabilities)}</div>
@@ -183,6 +236,24 @@ function openStudentForm(id=""){
     </form>
   `);
 
+  const updateGradePreview = () => {
+    const entry = Number($("entryAcademicYearInput")?.value || 0);
+    const program = $("studentForm")?.elements?.program?.value || "";
+    const suffix = $("gradeSuffixInput")?.value || "";
+    if(!entry){
+      $("gradePreview").value = $("studentForm")?.elements?.grade?.value || "";
+      return;
+    }
+    const n = currentAcademicYearROC() - entry + 1;
+    const prefix = program.includes("研") ? "研" : "大";
+    $("gradePreview").value = n < 1 ? "尚未入學" : `${prefix}${gradeNumberToText(n)}${suffix}`;
+  };
+  $("entryAcademicYearInput")?.addEventListener("input", updateGradePreview);
+  $("gradeSuffixInput")?.addEventListener("input", updateGradePreview);
+  $("studentForm")?.elements?.program?.addEventListener("input", updateGradePreview);
+  $("studentForm")?.elements?.grade?.addEventListener("input", updateGradePreview);
+  updateGradePreview();
+
   $("studentForm").onsubmit = async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -192,6 +263,8 @@ function openStudentForm(id=""){
       studentId: fd.get("studentId"),
       department: fd.get("department"),
       program: fd.get("program"),
+      entryAcademicYear: fd.get("entryAcademicYear") ? Number(fd.get("entryAcademicYear")) : null,
+      gradeSuffix: fd.get("gradeSuffix") || "",
       grade: fd.get("grade"),
       disabilities: fd.getAll("disabilities"),
       studentNote: fd.get("studentNote") || "",
@@ -309,7 +382,7 @@ async function openStudentRecords(studentId){
   openModal(`
     <h2>${esc(s.name)}｜服務紀錄</h2>
     <div class="meta">
-      學號：${esc(s.studentId)}　科系／班級：${esc(s.department||"")}　生理性別：${esc(s.biologicalSex||"")}<br>
+      學號：${esc(s.studentId)}　科系／班級：${esc(s.department||"")}　生理性別：${esc(s.biologicalSex||"")}　年級：${esc(calculatedGrade(s))}<br>
       學生障別：${esc(displayMulti(s.disabilities || s.issues || [])) || "未填"}
       ${s.studentNote ? `<br>備註：${esc(s.studentNote)}` : ""}
     </div>
@@ -452,7 +525,7 @@ async function exportStudentWorkbook(student, records){
     merge(5,1,4,"學制");
     merge(5,5,11,student.program || "");
     merge(5,12,15,"年級");
-    merge(5,16,30,student.grade || "");
+    merge(5,16,30,calculatedGrade(student));
 
     merge(6,1,4,"學生障別");
     merge(6,5,30,displayMulti(student.disabilities || student.issues || []) || "未填");
@@ -544,71 +617,88 @@ async function exportStudentWorkbook(student, records){
     });
     ws.getRow(10).height=23;
 
-    const minRows=Math.max(records.length,8);
+    /*
+      長篇內容摘述會依文字量拆成數個「續列」。
+      左側次數、日期、對象、方式、類型會跨列合併，
+      因此所有文字都能列印，不會被 Excel 單列最高高度截斷。
+    */
+    let outputRow = 11;
 
-    for(let i=0;i<minRows;i++){
-      const row=11+i;
+    records.forEach((r,recordIndex)=>{
+      const targets=displayMulti(r.targets || r.target);
+      const methods=displayMulti(r.methods || r.method);
+      const types=displayMulti(r.types || r.type);
+      const summaryParts=splitTextByDisplayUnits(String(r.summary || ""), 760);
+      const firstRow=outputRow;
+      const lastRow=outputRow + summaryParts.length - 1;
 
-      merge(row,1,2,i+1);
-      merge(row,3,6,"");
-      merge(row,7,10,"");
-      merge(row,11,14,"");
-      merge(row,15,18,"");
-      merge(row,19,30,"");
-
-      const r=records[i];
-      let rowHeight=36;
-
-      if(r){
-        const targets=displayMulti(r.targets || r.target);
-        const methods=displayMulti(r.methods || r.method);
-        const types=displayMulti(r.types || r.type);
-        const summary=String(r.summary || "");
-
-        ws.getCell(row,3).value=r.date || "";
-        ws.getCell(row,7).value=targets;
-        ws.getCell(row,11).value=methods;
-        ws.getCell(row,15).value=types;
-        ws.getCell(row,19).value=summary;
-
-        // S:AD 約可容納 22 個中文字／行。
-        const summaryLines=estimateExcelTextLines(summary,44);
-        const targetLines=estimateExcelTextLines(targets,17);
-        const methodLines=estimateExcelTextLines(methods,17);
-        const typeLines=estimateExcelTextLines(types,17);
-        const neededLines=Math.max(
-          1,
-          summaryLines,
-          targetLines,
-          methodLines,
-          typeLines
-        );
-
-        // 11pt 標楷體每行約 15.5pt，僅保留必要空間。
-        rowHeight=Math.max(36,Math.min(409,10+neededLines*15.5));
+      if(lastRow > firstRow){
+        ws.mergeCells(firstRow,1,lastRow,2);
+        ws.mergeCells(firstRow,3,lastRow,6);
+        ws.mergeCells(firstRow,7,lastRow,10);
+        ws.mergeCells(firstRow,11,lastRow,14);
+        ws.mergeCells(firstRow,15,lastRow,18);
+      }else{
+        ws.mergeCells(firstRow,1,firstRow,2);
+        ws.mergeCells(firstRow,3,firstRow,6);
+        ws.mergeCells(firstRow,7,firstRow,10);
+        ws.mergeCells(firstRow,11,firstRow,14);
+        ws.mergeCells(firstRow,15,firstRow,18);
       }
 
-      styleArea(row,1,row,30,{size:11,vertical:"top"});
-      [1,3,7,11,15].forEach(col=>{
-        ws.getCell(row,col).alignment={
-          horizontal:"center",
+      ws.getCell(firstRow,1).value=recordIndex+1;
+      ws.getCell(firstRow,3).value=r.date || "";
+      ws.getCell(firstRow,7).value=targets;
+      ws.getCell(firstRow,11).value=methods;
+      ws.getCell(firstRow,15).value=types;
+
+      summaryParts.forEach((part,partIndex)=>{
+        const row=firstRow+partIndex;
+        ws.mergeCells(row,19,row,30);
+        ws.getCell(row,19).value=part;
+
+        styleArea(row,1,row,30,{size:10.5,vertical:"middle"});
+        [1,3,7,11,15].forEach(col=>{
+          ws.getCell(row,col).alignment={
+            horizontal:"center",
+            vertical:"middle",
+            wrapText:true,
+            shrinkToFit:false
+          };
+        });
+
+        ws.getCell(row,19).alignment={
+          horizontal:"left",
           vertical:"top",
           wrapText:true,
           shrinkToFit:false
         };
+
+        const lines=estimateExcelTextLines(part,55);
+        ws.getRow(row).height=Math.max(34,Math.min(250,12+lines*15.2));
       });
-      ws.getCell(row,19).alignment={
-        horizontal:"left",
-        vertical:"top",
-        wrapText:true,
-        shrinkToFit:false
-      };
-      ws.getRow(row).height=rowHeight;
+
+      outputRow=lastRow+1;
+    });
+
+    // 至少保留八列外觀；不足的部分補空白列。
+    const minimumEndRow=18;
+    while(outputRow<=minimumEndRow){
+      ws.mergeCells(outputRow,1,outputRow,2);
+      ws.mergeCells(outputRow,3,outputRow,6);
+      ws.mergeCells(outputRow,7,outputRow,10);
+      ws.mergeCells(outputRow,11,outputRow,14);
+      ws.mergeCells(outputRow,15,outputRow,18);
+      ws.mergeCells(outputRow,19,outputRow,30);
+      ws.getCell(outputRow,1).value=outputRow-10;
+      styleArea(outputRow,1,outputRow,30,{size:10.5,vertical:"middle"});
+      ws.getRow(outputRow).height=34;
+      outputRow++;
     }
 
     ws.views=[{showGridLines:false}];
     ws.pageSetup.printTitlesRow="1:10";
-    ws.printArea=`A1:AD${10+minRows}`;
+    ws.printArea=`A1:AD${outputRow-1}`;
 
     const buffer=await wb.xlsx.writeBuffer();
     const link=document.createElement("a");

@@ -1,15 +1,15 @@
-# MUST Service Record System v0.3.3
+# MUST Service Record System v0.3.4
 
-本更新修正瀏覽器仍讀取舊版 app.js 的快取問題。
+本版修正：
+
+1. 內容摘述過長時，會自動拆成續列，確保所有文字都能列印。
+2. 次數、日期、對象、方式、類型會跨續列垂直合併，不會重複顯示。
+3. 內容摘述欄再加寬，字體調整為 10.5pt。
+4. 除內容摘述外，其餘欄位皆水平及垂直置中。
+5. 新增「入學學年度」與「班級後綴」。
+6. 年級會依目前學年度自動增加，不需要每年手動修改。
+7. 舊學生若未填入學學年度，仍會沿用原本手動年級資料。
 
 請同時覆蓋：
 - index.html
 - app.js
-
-index.html 已改為載入：
-`./app.js?v=0.3.3`
-
-正確載入後，F12 Console 最上方會顯示：
-`MUST Service Record System build v0.3.3`
-
-這版完全不讀取 service-record-template.xlsx 或 service-record-template.xlsm。
