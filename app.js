@@ -1,3 +1,5 @@
+const SERVICE_RECORD_BUILD = "v0.3.3";
+console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
@@ -618,7 +620,7 @@ async function exportStudentWorkbook(student, records){
     URL.revokeObjectURL(link.href);
   }catch(err){
     console.error("Export failed",err);
-    alert("服務紀錄表產生失敗：" + (err.message || err));
+    alert(`服務紀錄表產生失敗（${SERVICE_RECORD_BUILD}）：` + (err.message || err));
   }
 }
 function switchView(view){
