@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v0.3.4";
+const SERVICE_RECORD_BUILD = "v0.3.5";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
@@ -441,7 +441,9 @@ async function exportStudentWorkbook(student, records){
         fitToPage:true,
         fitToWidth:1,
         fitToHeight:0,
-        margins:{left:0.2,right:0.2,top:0.25,bottom:0.25,header:0.1,footer:0.1}
+        horizontalCentered:true,
+        verticalCentered:false,
+        margins:{left:0.18,right:0.18,top:0.25,bottom:0.25,header:0.1,footer:0.1}
       }
     });
 
@@ -595,20 +597,21 @@ async function exportStudentWorkbook(student, records){
     ws.getRow(9).height=22;
 
     /*
-      表格欄位：
+      表格欄位重新分配：
       次數 A:B（2欄）
       日期 C:F（4欄）
-      對象 G:J（4欄）
-      方式 K:N（4欄）
-      類型 O:R（4欄）
-      內容摘述 S:AD（12欄）
+      對象 G:I（3欄）
+      方式 J:L（3欄）
+      類型 M:O（3欄）
+      內容摘述 P:AD（15欄）
+      讓內容摘述佔整張表約一半寬度，減少換行與頁數。
     */
     merge(10,1,2,"次數");
     merge(10,3,6,"日期");
-    merge(10,7,10,"對象");
-    merge(10,11,14,"方式");
-    merge(10,15,18,"類型");
-    merge(10,19,30,"內容摘述");
+    merge(10,7,9,"對象");
+    merge(10,10,12,"方式");
+    merge(10,13,15,"類型");
+    merge(10,16,30,"內容摘述");
     styleArea(10,1,10,30,{
       size:11,
       bold:true,
@@ -618,9 +621,9 @@ async function exportStudentWorkbook(student, records){
     ws.getRow(10).height=23;
 
     /*
-      長篇內容摘述會依文字量拆成數個「續列」。
-      左側次數、日期、對象、方式、類型會跨列合併，
-      因此所有文字都能列印，不會被 Excel 單列最高高度截斷。
+      長篇內容摘述依「實際換行＋全形中文字寬」拆成續列。
+      每個續列保留較安全的文字量，避免第一筆剛好未拆列時被截斷。
+      左側欄位跨續列合併，所以同一筆紀錄仍維持完整外觀。
     */
     let outputRow = 11;
 
@@ -628,37 +631,41 @@ async function exportStudentWorkbook(student, records){
       const targets=displayMulti(r.targets || r.target);
       const methods=displayMulti(r.methods || r.method);
       const types=displayMulti(r.types || r.type);
-      const summaryParts=splitTextByDisplayUnits(String(r.summary || ""), 760);
+      const summary=String(r.summary || "");
+
+      // 內容欄已加寬，但仍採較保守的拆分量，確保列印完整。
+      const summaryParts=splitTextByDisplayUnits(summary, 560);
       const firstRow=outputRow;
       const lastRow=outputRow + summaryParts.length - 1;
 
       if(lastRow > firstRow){
         ws.mergeCells(firstRow,1,lastRow,2);
         ws.mergeCells(firstRow,3,lastRow,6);
-        ws.mergeCells(firstRow,7,lastRow,10);
-        ws.mergeCells(firstRow,11,lastRow,14);
-        ws.mergeCells(firstRow,15,lastRow,18);
+        ws.mergeCells(firstRow,7,lastRow,9);
+        ws.mergeCells(firstRow,10,lastRow,12);
+        ws.mergeCells(firstRow,13,lastRow,15);
       }else{
         ws.mergeCells(firstRow,1,firstRow,2);
         ws.mergeCells(firstRow,3,firstRow,6);
-        ws.mergeCells(firstRow,7,firstRow,10);
-        ws.mergeCells(firstRow,11,firstRow,14);
-        ws.mergeCells(firstRow,15,firstRow,18);
+        ws.mergeCells(firstRow,7,firstRow,9);
+        ws.mergeCells(firstRow,10,firstRow,12);
+        ws.mergeCells(firstRow,13,firstRow,15);
       }
 
       ws.getCell(firstRow,1).value=recordIndex+1;
       ws.getCell(firstRow,3).value=r.date || "";
       ws.getCell(firstRow,7).value=targets;
-      ws.getCell(firstRow,11).value=methods;
-      ws.getCell(firstRow,15).value=types;
+      ws.getCell(firstRow,10).value=methods;
+      ws.getCell(firstRow,13).value=types;
 
       summaryParts.forEach((part,partIndex)=>{
         const row=firstRow+partIndex;
-        ws.mergeCells(row,19,row,30);
-        ws.getCell(row,19).value=part;
+        ws.mergeCells(row,16,row,30);
+        ws.getCell(row,16).value=part;
 
         styleArea(row,1,row,30,{size:10.5,vertical:"middle"});
-        [1,3,7,11,15].forEach(col=>{
+
+        [1,3,7,10,13].forEach(col=>{
           ws.getCell(row,col).alignment={
             horizontal:"center",
             vertical:"middle",
@@ -667,29 +674,39 @@ async function exportStudentWorkbook(student, records){
           };
         });
 
-        ws.getCell(row,19).alignment={
+        ws.getCell(row,16).alignment={
           horizontal:"left",
           vertical:"top",
           wrapText:true,
           shrinkToFit:false
         };
 
-        const lines=estimateExcelTextLines(part,55);
-        ws.getRow(row).height=Math.max(34,Math.min(250,12+lines*15.2));
+        /*
+          內容摘述佔 15 個細欄，約可容納 27～30 個中文字。
+          以更保守的 44 顯示單位估算，並額外增加一行安全空間，
+          避免第一筆內容剛好壓在列高邊界而被截斷。
+        */
+        const textLines=estimateExcelTextLines(part,44);
+        const manualBreaks=(String(part).match(/\n/g) || []).length;
+        const safeLines=Math.max(1,textLines+manualBreaks+1);
+        ws.getRow(row).height=Math.max(
+          36,
+          Math.min(300, 12 + safeLines*16.5)
+        );
       });
 
       outputRow=lastRow+1;
     });
 
-    // 至少保留八列外觀；不足的部分補空白列。
+    // 至少保留八筆紀錄的空白列外觀。
     const minimumEndRow=18;
     while(outputRow<=minimumEndRow){
       ws.mergeCells(outputRow,1,outputRow,2);
       ws.mergeCells(outputRow,3,outputRow,6);
-      ws.mergeCells(outputRow,7,outputRow,10);
-      ws.mergeCells(outputRow,11,outputRow,14);
-      ws.mergeCells(outputRow,15,outputRow,18);
-      ws.mergeCells(outputRow,19,outputRow,30);
+      ws.mergeCells(outputRow,7,outputRow,9);
+      ws.mergeCells(outputRow,10,outputRow,12);
+      ws.mergeCells(outputRow,13,outputRow,15);
+      ws.mergeCells(outputRow,16,outputRow,30);
       ws.getCell(outputRow,1).value=outputRow-10;
       styleArea(outputRow,1,outputRow,30,{size:10.5,vertical:"middle"});
       ws.getRow(outputRow).height=34;
@@ -698,6 +715,7 @@ async function exportStudentWorkbook(student, records){
 
     ws.views=[{showGridLines:false}];
     ws.pageSetup.printTitlesRow="1:10";
+    ws.pageSetup.horizontalCentered=true;
     ws.printArea=`A1:AD${outputRow-1}`;
 
     const buffer=await wb.xlsx.writeBuffer();
