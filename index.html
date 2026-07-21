@@ -11,7 +11,7 @@
     <div class="login-card">
       <div class="logo">M</div>
       <h1>資源教室服務紀錄系統</h1>
-      <p>教師個人學生資料與服務紀錄管理</p><div class="hint">版本 v0.3.7</div>
+      <p>教師個人學生資料與服務紀錄管理</p><div class="hint">版本 v0.4.0</div>
       <button id="loginBtn" class="primary-btn">使用 Google 帳號登入</button>
       <a href="../" class="back-link">回入口網站</a>
     </div>
@@ -60,7 +60,7 @@
           <h2>系統設定</h2>
           <p class="hint">AI 只會處理「內容摘述」，不會傳送學生姓名、學號或其他基本資料。</p>
           <label>AI 安全代理網址</label>
-          <input id="aiEndpoint" class="field" placeholder="例如：https://你的-worker網址">
+          <input id="aiEndpoint" class="field" value="https://must-resource-ai.f00931-must.workers.dev/ai/polish">
           <button id="saveSettingsBtn" class="primary-btn">儲存設定</button>
         </div>
       </section>
@@ -77,6 +77,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script type="module" src="./app.js?v=0.3.7"></script>
+  <script type="module" src="./app.js?v=0.4.0"></script>
 </body>
 </html>

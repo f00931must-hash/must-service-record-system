@@ -1,4 +1,5 @@
-const SERVICE_RECORD_BUILD = "v0.3.7";
+const SERVICE_RECORD_BUILD = "v0.4.0";
+const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
@@ -123,8 +124,10 @@ $("modalClose").onclick = closeModal;
 $("addStudentBtn").onclick = () => openStudentForm();
 $("studentSearch").oninput = renderStudents;
 $("saveSettingsBtn").onclick = () => {
-  localStorage.setItem("service_ai_endpoint", $("aiEndpoint").value.trim());
-  toast("設定已儲存");
+  const endpoint = $("aiEndpoint").value.trim() || DEFAULT_AI_ENDPOINT;
+  localStorage.setItem("service_ai_endpoint", endpoint);
+  $("aiEndpoint").value = endpoint;
+  toast("AI 安全代理網址已儲存");
 };
 
 document.querySelectorAll(".nav").forEach(btn => btn.onclick = () => switchView(btn.dataset.view));
@@ -163,7 +166,7 @@ onAuthStateChanged(auth, async user => {
   $("loginView").classList.add("hidden");
   $("appView").classList.remove("hidden");
   $("userEmail").textContent = user.email || "";
-  $("aiEndpoint").value = localStorage.getItem("service_ai_endpoint") || "";
+  $("aiEndpoint").value = localStorage.getItem("service_ai_endpoint") || DEFAULT_AI_ENDPOINT;
   await loadAll();
 });
 
@@ -327,24 +330,34 @@ function openRecordForm(studentId){
     const text = $("summaryInput").value.trim();
     if(!text) return alert("請先輸入內容摘述。");
     originalText = text;
-    const endpoint = localStorage.getItem("service_ai_endpoint") || "";
-    if(!endpoint) return alert("尚未設定 AI 安全代理網址，請先到系統設定填寫。");
+    const endpoint = localStorage.getItem("service_ai_endpoint") || DEFAULT_AI_ENDPOINT;
     $("aiPolishBtn").disabled = true;
-    $("aiPolishBtn").textContent = "潤飾中...";
+    $("aiPolishBtn").textContent = "AI 潤飾中...";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
     try{
       const res = await fetch(endpoint,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({text})
+        body:JSON.stringify({action:"polish", text}),
+        signal:controller.signal
       });
-      if(!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      $("summaryInput").value = data.polished || data.text || "";
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || data.success === false){
+        throw new Error(data.error || `伺服器回應錯誤（${res.status}）`);
+      }
+      const polished = String(data.polished || data.result || data.text || "").trim();
+      if(!polished) throw new Error("AI 未回傳潤飾內容");
+      $("summaryInput").value = polished;
       toast("AI 潤飾完成，請確認內容後再儲存");
     }catch(err){
       console.error(err);
-      alert("AI 潤飾失敗：" + err.message);
+      const message = err?.name === "AbortError"
+        ? "AI 回應逾時，請稍後再試。"
+        : (err?.message || "未知錯誤");
+      alert("AI 潤飾失敗：" + message);
     }finally{
+      clearTimeout(timeoutId);
       $("aiPolishBtn").disabled = false;
       $("aiPolishBtn").textContent = "✨ AI 潤飾內容摘述";
     }
