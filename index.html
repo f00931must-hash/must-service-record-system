@@ -4,14 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>資源教室服務紀錄系統</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=1.0.0">
 </head>
 <body>
   <div id="loginView" class="login-view">
     <div class="login-card">
       <div class="logo">M</div>
       <h1>資源教室服務紀錄系統</h1>
-      <p>教師個人學生資料與服務紀錄管理</p><div class="hint">版本 v0.4.0</div>
+      <p>個管老師與小幫手的學生服務紀錄管理</p>
+      <div class="hint">版本 v1.0.0｜個人權限安全版</div>
       <button id="loginBtn" class="primary-btn">使用 Google 帳號登入</button>
       <a href="../" class="back-link">回入口網站</a>
     </div>
@@ -19,64 +20,37 @@
 
   <div id="appView" class="app hidden">
     <aside class="sidebar">
-      <div class="brand">
-        <div class="mini-logo">M</div>
-        <div><strong>服務紀錄</strong><span>管理平台</span></div>
-      </div>
+      <div class="brand"><div class="mini-logo">M</div><div><strong>服務紀錄</strong><span>個案管理平台</span></div></div>
       <button class="nav active" data-view="students">👥 我的學生</button>
       <button class="nav" data-view="records">📝 最近紀錄</button>
+      <button class="nav" data-view="history">📜 我的操作紀錄</button>
+      <button class="nav" data-view="recycle">🗑 我的回收桶</button>
+      <button class="nav teacher-only" data-view="transfer">🔄 批次轉移</button>
       <button class="nav" data-view="settings">⚙ 系統設定</button>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <div>
-          <div class="eyebrow">MUST RESOURCE CENTER</div>
-          <h1 id="pageTitle">我的學生</h1>
-        </div>
-        <div class="user-area">
-          <span id="userEmail"></span>
-          <button id="logoutBtn" class="ghost-btn">登出</button>
-        </div>
+        <div><div class="eyebrow">MUST RESOURCE CENTER</div><h1 id="pageTitle">我的學生</h1></div>
+        <div class="user-area"><span id="roleBadge" class="role-badge"></span><span id="userEmail"></span><button id="logoutBtn" class="ghost-btn">登出</button></div>
       </header>
 
       <section id="view-students" class="view">
-        <div class="toolbar">
-          <input id="studentSearch" class="field" placeholder="搜尋姓名、學號、科系或班級">
-          <button id="addStudentBtn" class="primary-btn">＋新增學生</button>
-        </div>
+        <div class="toolbar"><input id="studentSearch" class="field" placeholder="搜尋姓名、學號、科系或班級"><button id="addStudentBtn" class="primary-btn">＋新增學生</button></div>
         <div id="studentList" class="card-grid"></div>
       </section>
 
-      <section id="view-records" class="view hidden">
-        <div class="panel">
-          <h2>最近服務紀錄</h2>
-          <div id="recentRecords"></div>
-        </div>
-      </section>
-
-      <section id="view-settings" class="view hidden">
-        <div class="panel">
-          <h2>系統設定</h2>
-          <p class="hint">AI 只會處理「內容摘述」，不會傳送學生姓名、學號或其他基本資料。</p>
-          <label>AI 安全代理網址</label>
-          <input id="aiEndpoint" class="field" value="https://must-resource-ai.f00931-must.workers.dev/ai/polish">
-          <button id="saveSettingsBtn" class="primary-btn">儲存設定</button>
-        </div>
-      </section>
+      <section id="view-records" class="view hidden"><div class="panel"><h2>最近服務紀錄</h2><div id="recentRecords"></div></div></section>
+      <section id="view-history" class="view hidden"><div class="panel"><h2>我的操作紀錄</h2><p class="hint">顯示你本人新增、修改、刪除、還原與轉移的操作。</p><div id="auditList"></div></div></section>
+      <section id="view-recycle" class="view hidden"><div class="panel"><h2>我的回收桶</h2><p class="hint">刪除不會真正消失；個管老師可自行還原。小幫手可查看自己協助刪除的服務紀錄，但不能刪除學生。</p><div id="recycleList"></div></div></section>
+      <section id="view-transfer" class="view hidden"><div class="panel"><h2>批次轉移學生</h2><p class="hint">勾選學生後轉交給另一位個管老師。學生及其服務紀錄會一併移交，歷史建立者不會改寫。</p><div id="transferList"></div></div></section>
+      <section id="view-settings" class="view hidden"><div class="panel"><h2>系統設定</h2><p class="hint">AI 只會處理「內容摘述」，不會傳送學生姓名、學號或其他基本資料。</p><label>AI 安全代理網址</label><input id="aiEndpoint" class="field" value="https://must-resource-ai.f00931-must.workers.dev/ai/polish"><button id="saveSettingsBtn" class="primary-btn">儲存設定</button><div id="migrationBox" class="migration-box teacher-only"></div></div></section>
     </main>
   </div>
 
-  <div id="modal" class="modal hidden">
-    <div class="modal-box">
-      <button id="modalClose" class="modal-close">×</button>
-      <div id="modalContent"></div>
-    </div>
-  </div>
-
+  <div id="modal" class="modal hidden"><div class="modal-box"><button id="modalClose" class="modal-close">×</button><div id="modalContent"></div></div></div>
   <div id="toast" class="toast hidden"></div>
-
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script type="module" src="./app.js?v=0.4.0"></script>
+  <script type="module" src="./app.js?v=1.0.0"></script>
 </body>
 </html>

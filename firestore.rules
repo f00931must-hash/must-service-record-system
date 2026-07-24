@@ -3,13 +3,57 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.email != null;
     }
 
-    function teacherEnabled() {
+    function email() {
+      return request.auth.token.email.lower();
+    }
+
+    function accessExists() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/settings/serviceAccess)
+        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[email()] != null;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/settings/serviceAccess).data.users[email()];
+    }
+
+    function legacyProfileExists() {
       return signedIn()
         && exists(/databases/$(database)/documents/authorizedTeachers/$(request.auth.uid))
         && get(/databases/$(database)/documents/authorizedTeachers/$(request.auth.uid)).data.enabled == true;
+    }
+
+    function enabled() {
+      return (accessExists() && profile().enabled == true) || legacyProfileExists();
+    }
+
+    function role() {
+      return accessExists() ? profile().role : "teacher";
+    }
+
+    function ownerEmail() {
+      return accessExists() && role() == "assistant"
+        ? profile().ownerEmail.lower()
+        : email();
+    }
+
+    function isTeacher() {
+      return enabled() && (role() == "teacher" || role() == "admin");
+    }
+
+    function validTeacher(targetEmail) {
+      return accessExists()
+        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail] != null
+        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].enabled == true
+        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].role == "teacher";
+    }
+
+    match /settings/serviceAccess {
+      allow read: if signedIn();
+      allow write: if false; // 由 Portal 權限同步程序寫入
     }
 
     match /authorizedTeachers/{uid} {
@@ -17,16 +61,91 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // 舊版資料僅供本人讀取及執行一次性移轉，不再由新版畫面寫入。
     match /teachers/{teacherId} {
-      allow read, write: if teacherEnabled() && request.auth.uid == teacherId;
-
+      allow read: if enabled() && request.auth.uid == teacherId;
+      allow write: if false;
       match /students/{studentId} {
-        allow read, write: if teacherEnabled() && request.auth.uid == teacherId;
-
+        allow read: if enabled() && request.auth.uid == teacherId;
+        allow write: if false;
         match /records/{recordId} {
-          allow read, write: if teacherEnabled() && request.auth.uid == teacherId;
+          allow read: if enabled() && request.auth.uid == teacherId;
+          allow write: if false;
         }
       }
+    }
+
+    match /students/{studentId} {
+      allow read: if enabled() && resource.data.ownerEmail == ownerEmail();
+
+      allow create: if enabled()
+        && request.resource.data.ownerEmail == ownerEmail()
+        && request.resource.data.createdBy == email()
+        && request.resource.data.deleted == false;
+
+      allow update: if enabled()
+        && resource.data.ownerEmail == ownerEmail()
+        && (
+          // 一般修改：不得偷改資料歸屬；小幫手也不得刪除學生。
+          (
+            request.resource.data.ownerEmail == resource.data.ownerEmail
+            && (isTeacher() || request.resource.data.deleted == resource.data.deleted)
+          )
+          ||
+          // 單一或批次轉移：只有目前個管老師可以轉交給有效老師。
+          (
+            isTeacher()
+            && resource.data.deleted != true
+            && request.resource.data.ownerEmail != resource.data.ownerEmail
+            && validTeacher(request.resource.data.ownerEmail)
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /records/{recordId} {
+      allow read: if enabled() && resource.data.ownerEmail == ownerEmail();
+
+      allow create: if enabled()
+        && request.resource.data.ownerEmail == ownerEmail()
+        && request.resource.data.createdBy == email()
+        && request.resource.data.deleted == false
+        && exists(/databases/$(database)/documents/students/$(request.resource.data.studentId))
+        && get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.ownerEmail == ownerEmail();
+
+      allow update: if enabled()
+        && resource.data.ownerEmail == ownerEmail()
+        && (
+          request.resource.data.ownerEmail == resource.data.ownerEmail
+          || (
+            isTeacher()
+            && request.resource.data.ownerEmail != resource.data.ownerEmail
+            && validTeacher(request.resource.data.ownerEmail)
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if enabled()
+        && (resource.data.actorEmail == email() || resource.data.ownerEmail == ownerEmail());
+      allow create: if enabled()
+        && request.resource.data.actorEmail == email();
+      allow update, delete: if false;
+    }
+
+    match /transferLogs/{logId} {
+      allow read: if enabled()
+        && (resource.data.fromEmail == ownerEmail()
+          || resource.data.toEmail == ownerEmail()
+          || resource.data.operatorEmail == email());
+      allow create: if isTeacher()
+        && request.resource.data.operatorEmail == email()
+        && request.resource.data.fromEmail == email()
+        && validTeacher(request.resource.data.toEmail);
+      allow update, delete: if false;
     }
 
     match /{document=**} {
