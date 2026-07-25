@@ -94,3 +94,15 @@ label{font-weight:700;display:block;margin-bottom:5px}
 .loading-card{display:flex;align-items:center;gap:14px;padding:22px 26px;border-radius:18px;background:#fff;box-shadow:0 16px 44px rgba(17,47,77,.14)}
 .loading-spinner{width:24px;height:24px;border:3px solid #dbeafe;border-top-color:var(--sky);border-radius:50%;animation:service-spin .8s linear infinite}
 @keyframes service-spin{to{transform:rotate(360deg)}}
+
+
+/* v1.1.0 批次下載 */
+.batch-download-controls{display:flex;flex-direction:column;gap:18px}
+.batch-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.batch-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:16px;background:#f8fbff;border:1px solid var(--line);border-radius:16px}
+.batch-student-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.batch-download-footer{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-top:4px}
+.batch-progress{min-width:min(420px,100%);flex:1}
+.progress-track{height:12px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-bottom:7px}
+.progress-bar{height:100%;width:0;background:linear-gradient(90deg,#49bff2,#0f6f9c);transition:width .18s ease}
+@media(max-width:800px){.batch-filter-grid{grid-template-columns:1fr}.batch-download-footer{align-items:stretch;flex-direction:column}.batch-progress{width:100%}}

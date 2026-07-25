@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.7-stable";
+const SERVICE_RECORD_BUILD = "v1.1.0-batch-download";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -200,7 +200,12 @@ onAuthStateChanged(auth,async user=>{
   }
 });
 
-async function loadAll(){await loadStudents();await Promise.all([loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);if(isTeacher())renderTransferView();}
+async function loadAll(){
+  await loadStudents();
+  await Promise.all([loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);
+  renderBatchDownloadView();
+  if(isTeacher())renderTransferView();
+}
 async function loadStudents(){const snap=await getDocs(query(collection(db,"students"),where("ownerEmail","==",effectiveOwnerEmail())));students=snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.deleted!==true).sort((a,b)=>(a.name||"").localeCompare(b.name||"","zh-Hant"));renderStudents();}
 
 function renderStudents(){
@@ -283,6 +288,119 @@ async function restoreItem(type,id){
   toast("資料已還原");await loadAll();
 }
 
+
+function currentSemesterRange(){
+  const now=new Date();
+  const year=now.getFullYear();
+  const month=now.getMonth()+1;
+  if(month>=8){
+    return {start:`${year}-08-01`,end:`${year+1}-01-31`,label:`${year-1911}-1`};
+  }
+  if(month===1){
+    return {start:`${year-1}-08-01`,end:`${year}-01-31`,label:`${year-1912}-1`};
+  }
+  return {start:`${year}-02-01`,end:`${year}-07-31`,label:`${year-1912}-2`};
+}
+
+function currentAcademicYearRange(){
+  const now=new Date();
+  const startYear=now.getMonth()>=7?now.getFullYear():now.getFullYear()-1;
+  return {start:`${startYear}-08-01`,end:`${startYear+1}-07-31`,label:`${startYear-1911}學年度`};
+}
+
+function safeFilename(name){
+  return String(name||"未命名").replace(/[\\/:*?"<>|]/g,"_").replace(/\s+/g," ").trim().slice(0,80)||"未命名";
+}
+
+function recordsByRange(records,range,start,end){
+  if(range==="all")return records;
+  let from=start,to=end;
+  if(range==="semester")({start:from,end:to}=currentSemesterRange());
+  if(range==="academicYear")({start:from,end:to}=currentAcademicYearRange());
+  return records.filter(r=>(!from||r.date>=from)&&(!to||r.date<=to));
+}
+
+function renderBatchDownloadView(){
+  const target=$("batchDownloadList");
+  if(!target)return;
+  const semester=currentSemesterRange();
+  const academicYear=currentAcademicYearRange();
+  target.innerHTML=`
+    <div class="batch-download-controls">
+      <div class="batch-toolbar">
+        <button id="selectAllBatchBtn" class="ghost-btn" type="button">全選</button>
+        <button id="clearAllBatchBtn" class="ghost-btn" type="button">取消全選</button>
+        <span id="batchSelectedCount" class="status-pill">已選 0 位</span>
+      </div>
+      <div class="batch-filter-grid">
+        <div><label>下載範圍</label><select id="batchRange" class="field">
+          <option value="all">全部服務紀錄</option>
+          <option value="semester">本學期（${semester.label}）</option>
+          <option value="academicYear">本學年（${academicYear.label}）</option>
+          <option value="custom">自訂日期</option>
+        </select></div>
+        <div id="batchCustomStartWrap" class="hidden"><label>開始日期</label><input id="batchStartDate" type="date" class="field"></div>
+        <div id="batchCustomEndWrap" class="hidden"><label>結束日期</label><input id="batchEndDate" type="date" class="field"></div>
+      </div>
+      <div id="batchStudentGrid" class="batch-student-grid">${students.length?students.map(s=>`<label class="student-card student-select"><input type="checkbox" name="batchDownloadStudent" value="${s.id}"><span><strong>${esc(s.name)}</strong><br><span class="meta">${esc(s.studentId)}｜${esc(s.department||"")}</span></span></label>`).join(""):'<div class="empty">目前沒有學生資料。</div>'}</div>
+      <div class="batch-download-footer"><button id="startBatchDownloadBtn" class="primary-btn" type="button">📥 開始批次下載</button><div id="batchProgress" class="batch-progress hidden"><div class="progress-track"><div id="batchProgressBar" class="progress-bar"></div></div><div id="batchProgressText" class="hint"></div></div></div>
+    </div>`;
+  const updateCount=()=>{$("batchSelectedCount").textContent=`已選 ${document.querySelectorAll('input[name="batchDownloadStudent"]:checked').length} 位`;};
+  document.querySelectorAll('input[name="batchDownloadStudent"]').forEach(x=>x.addEventListener("change",updateCount));
+  $("selectAllBatchBtn").onclick=()=>{document.querySelectorAll('input[name="batchDownloadStudent"]').forEach(x=>x.checked=true);updateCount();};
+  $("clearAllBatchBtn").onclick=()=>{document.querySelectorAll('input[name="batchDownloadStudent"]').forEach(x=>x.checked=false);updateCount();};
+  $("batchRange").onchange=e=>{const custom=e.target.value==="custom";$("batchCustomStartWrap").classList.toggle("hidden",!custom);$("batchCustomEndWrap").classList.toggle("hidden",!custom);};
+  $("startBatchDownloadBtn").onclick=startBatchDownload;
+}
+
+async function startBatchDownload(){
+  const ids=[...document.querySelectorAll('input[name="batchDownloadStudent"]:checked')].map(x=>x.value);
+  if(!ids.length)return alert("請至少選擇一位學生。");
+  if(typeof JSZip==="undefined")return alert("ZIP 元件尚未載入，請重新整理頁面後再試。");
+  const range=$("batchRange").value;
+  const start=$("batchStartDate")?.value||"";
+  const end=$("batchEndDate")?.value||"";
+  if(range==="custom"&&(!start||!end))return alert("請完整選擇開始日期與結束日期。");
+  if(range==="custom"&&start>end)return alert("開始日期不能晚於結束日期。");
+
+  const btn=$("startBatchDownloadBtn");
+  const progress=$("batchProgress");
+  const bar=$("batchProgressBar");
+  const text=$("batchProgressText");
+  btn.disabled=true;progress.classList.remove("hidden");bar.style.width="0%";
+  try{
+    const zip=new JSZip();
+    const usedNames=new Map();
+    const summary=[];
+    for(let i=0;i<ids.length;i++){
+      const student=students.find(s=>s.id===ids[i]);
+      text.textContent=`正在產生 ${student?.name||"學生"} 的服務紀錄…（${i+1} / ${ids.length}）`;
+      const allRecords=await getStudentRecords(ids[i]);
+      const filtered=recordsByRange(allRecords,range,start,end);
+      const buffer=await exportStudentWorkbook(student,filtered,{download:false});
+      const base=safeFilename(`${student.name}_${student.studentId||""}_服務紀錄表`);
+      const count=(usedNames.get(base)||0)+1;usedNames.set(base,count);
+      const filename=`${base}${count>1?`_${count}`:""}.xlsx`;
+      zip.file(filename,buffer);
+      summary.push(`${student.name}（${student.studentId||"無學號"}）：${filtered.length} 筆`);
+      bar.style.width=`${Math.round((i+1)/ids.length*85)}%`;
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    let rangeLabel="全部紀錄";
+    if(range==="semester")rangeLabel=currentSemesterRange().label;
+    if(range==="academicYear")rangeLabel=currentAcademicYearRange().label;
+    if(range==="custom")rangeLabel=`${start}_${end}`;
+    zip.file("批次下載清單.txt",`明新科技大學 學務處健康與諮商中心資源教室\n學生服務紀錄批次下載\n\n下載範圍：${rangeLabel}\n下載日期：${new Date().toLocaleDateString("zh-TW")}\n學生人數：${ids.length}\n\n${summary.join("\n")}`);
+    text.textContent="正在壓縮 ZIP 檔案…";
+    const blob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:6}},meta=>{bar.style.width=`${85+Math.round(meta.percent*.15)}%`;});
+    const d=new Date();const ymd=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+    const link=document.createElement("a");link.href=URL.createObjectURL(blob);link.download=safeFilename(`服務紀錄_${rangeLabel}_${ymd}`)+".zip";link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+    bar.style.width="100%";text.textContent=`完成：已下載 ${ids.length} 位學生的服務紀錄。`;
+    toast(`已完成 ${ids.length} 位學生的批次下載`);
+  }catch(err){console.error("Batch export failed",err);alert("批次下載失敗："+(err.message||err));text.textContent="批次下載失敗，請稍後再試。";}
+  finally{btn.disabled=false;}
+}
+
 function renderTransferView(){
   const options=teacherDirectory.filter(t=>t.email!==effectiveOwnerEmail()).map(t=>`<option value="${esc(t.email)}">${esc(t.displayName)}（${esc(t.email)}）</option>`).join("");
   $("transferList").innerHTML=`<div class="transfer-bar"><div><label>轉交給</label><select id="batchTransferTarget" class="field"><option value="">請選擇個管老師</option>${options}</select></div><div><label>轉移原因</label><input id="batchTransferReason" class="field" placeholder="例如：學生轉系、個管分工調整"></div><button id="batchTransferBtn" class="primary-btn">轉移已勾選學生</button></div>${students.length?students.map(s=>`<label class="student-card student-select"><input type="checkbox" name="transferStudent" value="${s.id}"><span><strong>${esc(s.name)}</strong><br><span class="meta">${esc(s.studentId)}｜${esc(s.department||"")}</span></span></label>`).join(""):'<div class="empty">目前沒有學生資料。</div>'}`;
@@ -328,7 +446,7 @@ function estimateExcelTextLines(text, capacity=40){
   }, 0);
 }
 
-async function exportStudentWorkbook(student, records){
+async function exportStudentWorkbook(student, records,{download=true}={}){
   try{
     const wb = new ExcelJS.Workbook();
     wb.creator = "MUST Resource Center";
@@ -633,13 +751,15 @@ async function exportStudentWorkbook(student, records){
     ws.printArea=`A1:AD${outputRow-1}`;
 
     const buffer=await wb.xlsx.writeBuffer();
+    if(!download)return buffer;
     const link=document.createElement("a");
     link.href=URL.createObjectURL(new Blob([buffer],{
       type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }));
-    link.download=`${student.name}_服務紀錄表.xlsx`;
+    link.download=`${safeFilename(student.name)}_服務紀錄表.xlsx`;
     link.click();
-    URL.revokeObjectURL(link.href);
+    setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+    return buffer;
   }catch(err){
     console.error("Export failed",err);
     alert(`服務紀錄表產生失敗（${SERVICE_RECORD_BUILD}）：` + (err.message || err));
@@ -653,8 +773,8 @@ function switchView(view){
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",transfer:"批次轉移",settings:"系統設定"}[view]||"";
-  if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="transfer"&&isTeacher())renderTransferView();
+  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",transfer:"批次轉移",settings:"系統設定"}[view]||"";
+  if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="transfer"&&isTeacher())renderTransferView();
 }
 function openModal(html){$("modalContent").innerHTML=html;$("modal").classList.remove("hidden");}
 function closeModal(){$("modal").classList.add("hidden");$("modalContent").innerHTML="";}
