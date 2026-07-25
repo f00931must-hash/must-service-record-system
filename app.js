@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.4-portal-permission-sync";
+const SERVICE_RECORD_BUILD = "v1.0.5-team-audit-transfer-fix";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -54,24 +54,7 @@ function dateText(v){ if(!v) return ""; if(v?.toDate) return v.toDate().toLocale
 async function resolveAccess(user){
   const email=(user.email||"").toLowerCase();
 
-  // 先沿用舊系統已存在的 authorizedTeachers/{uid}，避免尚未建立
-  // settings/serviceAccess 時整個系統無法登入。
-  try{
-    const legacy=await getDoc(doc(db,"authorizedTeachers",user.uid));
-    if(legacy.exists()&&legacy.data().enabled===true){
-      const d=legacy.data();
-      return {
-        email,
-        role:d.role||"teacher",
-        ownerEmail:(d.ownerEmail||email).toLowerCase(),
-        displayName:d.displayName||d.name||user.displayName||email
-      };
-    }
-  }catch(err){
-    console.warn("讀取既有 authorizedTeachers 授權失敗",err);
-  }
-
-  // Portal 新版同步完成後，再自動採用集中式 serviceAccess。
+  // 先採用 Portal 集中同步名單，確保 teacher／assistant 身分不會被舊資料覆蓋。
   try{
     const accessDoc=await getDoc(doc(db,"settings","serviceAccess"));
     if(accessDoc.exists()){
@@ -81,7 +64,29 @@ async function resolveAccess(user){
       }
     }
   }catch(err){
-    console.warn("serviceAccess 尚未建立或暫時無法讀取，改用既有授權名單",err);
+    console.warn("serviceAccess 尚未建立或暫時無法讀取",err);
+  }
+
+  // 個管老師可自行同步自己的協作者，每位協作者使用獨立授權文件。
+  try{
+    const assistantDoc=await getDoc(doc(db,"serviceAssistants",email));
+    if(assistantDoc.exists()&&assistantDoc.data().enabled===true){
+      const d=assistantDoc.data();
+      return {email,role:"assistant",ownerEmail:String(d.ownerEmail||"").toLowerCase(),displayName:d.displayName||d.name||user.displayName||email};
+    }
+  }catch(err){
+    console.warn("讀取個管老師同步的協作者授權失敗",err);
+  }
+
+  // 尚未完成 Portal 同步時，才沿用舊 authorizedTeachers/{uid}。
+  try{
+    const legacy=await getDoc(doc(db,"authorizedTeachers",user.uid));
+    if(legacy.exists()&&legacy.data().enabled===true){
+      const d=legacy.data();
+      return {email,role:d.role||"teacher",ownerEmail:(d.ownerEmail||email).toLowerCase(),displayName:d.displayName||d.name||user.displayName||email};
+    }
+  }catch(err){
+    console.warn("讀取既有 authorizedTeachers 授權失敗",err);
   }
   return null;
 }
@@ -95,7 +100,7 @@ async function loadTeacherDirectory(){
     const snap=await getDoc(doc(db,"settings","serviceAccess"));
     const users=snap.exists()?snap.data().users||{}:{};
     const synced=Object.entries(users)
-      .filter(([,u])=>u.enabled===true&&(u.role||"teacher")==="teacher")
+      .filter(([,u])=>u.enabled===true&&["teacher","admin"].includes(u.role||"teacher"))
       .map(([email,u])=>({email:email.toLowerCase(),displayName:nameWithRole(u.displayName||u.name||email,"teacher")}));
     if(synced.length){
       teacherDirectory=[...synced];
@@ -216,7 +221,7 @@ async function loadRecentRecords(){recentRecords=[];const snap=await getDocs(que
 
 async function loadAuditLogs(){
   const email=(currentUser.email||"").toLowerCase();
-  const snap=await getDocs(query(collection(db,"auditLogs"),where("actorEmail","==",email)));
+  const snap=await getDocs(query(collection(db,"auditLogs"),where("ownerEmail","==",effectiveOwnerEmail())));
   const logs=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)).slice(0,100);
   const actionMap={create:"新增",update:"修改",delete:"移至回收桶",restore:"還原",transfer:"轉移"};
   const roleMap={teacher:"個管老師",assistant:"小幫手",admin:"系統管理員"};
@@ -611,7 +616,7 @@ function switchView(view){
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"我的操作紀錄",recycle:"我的回收桶",transfer:"批次轉移",settings:"系統設定"}[view]||"";
+  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",transfer:"批次轉移",settings:"系統設定"}[view]||"";
   if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="transfer"&&isTeacher())renderTransferView();
 }
 function openModal(html){$("modalContent").innerHTML=html;$("modal").classList.remove("hidden");}

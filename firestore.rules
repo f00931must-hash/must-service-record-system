@@ -70,6 +70,21 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+
+    match /serviceAssistants/{assistantEmail} {
+      // 協作者可讀自己的授權；個管老師只能管理 ownerEmail 為自己的協作者。
+      allow read: if signedIn() && (assistantEmail == email() || (isTeacher() && resource.data.ownerEmail == email()));
+      allow create: if isTeacher()
+        && assistantEmail == request.resource.data.email
+        && request.resource.data.ownerEmail == email()
+        && request.resource.data.role == "assistant";
+      allow update: if isTeacher()
+        && resource.data.ownerEmail == email()
+        && request.resource.data.ownerEmail == email()
+        && request.resource.data.role == "assistant";
+      allow delete: if isTeacher() && resource.data.ownerEmail == email();
+    }
+
     match /authorizedTeachers/{uid} {
       // 過渡期允許已授權使用者讀取老師名單，供學生轉移選單使用。
       // 寫入仍由既有管理流程或日後 Portal 同步負責。

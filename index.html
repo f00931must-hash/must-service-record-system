@@ -23,7 +23,7 @@
       <div class="brand"><div class="mini-logo">M</div><div><strong>服務紀錄</strong><span>個案管理平台</span></div></div>
       <button class="nav active" data-view="students">👥 我的學生</button>
       <button class="nav" data-view="records">📝 最近紀錄</button>
-      <button class="nav" data-view="history">📜 我的操作紀錄</button>
+      <button class="nav" data-view="history">📜 操作紀錄</button>
       <button class="nav" data-view="recycle">🗑 我的回收桶</button>
       <button class="nav teacher-only" data-view="transfer">🔄 批次轉移</button>
       <button class="nav" data-view="settings">⚙ 系統設定</button>
@@ -41,7 +41,7 @@
       </section>
 
       <section id="view-records" class="view hidden"><div class="panel"><h2>最近服務紀錄</h2><div id="recentRecords"></div></div></section>
-      <section id="view-history" class="view hidden"><div class="panel"><h2>我的操作紀錄</h2><p class="hint">顯示你本人新增、修改、刪除、還原與轉移的操作。</p><div id="auditList"></div></div></section>
+      <section id="view-history" class="view hidden"><div class="panel"><h2>操作紀錄</h2><p class="hint">顯示你本人新增、修改、刪除、還原與轉移的操作。</p><div id="auditList"></div></div></section>
       <section id="view-recycle" class="view hidden"><div class="panel"><h2>我的回收桶</h2><p class="hint">刪除不會真正消失；個管老師可自行還原。小幫手可查看自己協助刪除的服務紀錄，但不能刪除學生。</p><div id="recycleList"></div></div></section>
       <section id="view-transfer" class="view hidden"><div class="panel"><h2>批次轉移學生</h2><p class="hint">勾選學生後轉交給另一位個管老師。學生及其服務紀錄會一併移交，歷史建立者不會改寫。</p><div id="transferList"></div></div></section>
       <section id="view-settings" class="view hidden"><div class="panel"><h2>系統設定</h2><p class="hint">AI 只會處理「內容摘述」，不會傳送學生姓名、學號或其他基本資料。</p><label>AI 安全代理網址</label><input id="aiEndpoint" class="field" value="https://must-resource-ai.f00931-must.workers.dev/ai/polish"><button id="saveSettingsBtn" class="primary-btn">儲存設定</button><div id="migrationBox" class="migration-box teacher-only"></div></div></section>
