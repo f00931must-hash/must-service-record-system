@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.2-transfer-audit-excel-fix";
+const SERVICE_RECORD_BUILD = "v1.0.3-migration-names-excel-readability";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -39,7 +39,15 @@ function splitTextByDisplayUnits(text,maxUnits=820){ const source=String(text||"
 function isAssistant(){ return accessProfile?.role === "assistant"; }
 function isTeacher(){ return accessProfile?.role === "teacher" || accessProfile?.role === "admin"; }
 function effectiveOwnerEmail(){ return isAssistant() ? accessProfile.ownerEmail : (currentUser?.email||"").toLowerCase(); }
-function actorLabel(){ return accessProfile?.displayName || currentUser?.displayName || currentUser?.email || ""; }
+function baseActorName(){ return accessProfile?.displayName || currentUser?.displayName || currentUser?.email || ""; }
+function nameWithRole(name,role=accessProfile?.role){
+  const raw=String(name||"").trim();
+  if(!raw) return "";
+  const suffix=role==="assistant"?"協作者":(role==="teacher"||role==="admin"?"老師":"");
+  if(!suffix||raw.endsWith(suffix)) return raw;
+  return `${raw}${suffix}`;
+}
+function actorLabel(){ return nameWithRole(baseActorName(),accessProfile?.role); }
 function safeClone(obj){ return JSON.parse(JSON.stringify(obj||{})); }
 function dateText(v){ if(!v) return ""; if(v?.toDate) return v.toDate().toLocaleString("zh-TW"); if(v instanceof Date) return v.toLocaleString("zh-TW"); return String(v); }
 
@@ -88,7 +96,7 @@ async function loadTeacherDirectory(){
     const users=snap.exists()?snap.data().users||{}:{};
     const synced=Object.entries(users)
       .filter(([,u])=>u.enabled===true&&(u.role||"teacher")==="teacher")
-      .map(([email,u])=>({email:email.toLowerCase(),displayName:u.displayName||u.name||email}));
+      .map(([email,u])=>({email:email.toLowerCase(),displayName:nameWithRole(u.displayName||u.name||email,"teacher")}));
     if(synced.length){
       teacherDirectory=[...synced];
       loaded=true;
@@ -106,7 +114,7 @@ async function loadTeacherDirectory(){
         .filter(u=>u.enabled===true && u.email)
         .map(u=>({
           email:String(u.email).toLowerCase(),
-          displayName:u.displayName||u.name||u.email
+          displayName:nameWithRole(u.displayName||u.name||u.email,"teacher")
         }));
       if(legacyTeachers.length) teacherDirectory=legacyTeachers;
     }catch(err){
@@ -213,7 +221,7 @@ async function loadAuditLogs(){
   const actionMap={create:"新增",update:"修改",delete:"移至回收桶",restore:"還原",transfer:"轉移"};
   const roleMap={teacher:"個管老師",assistant:"小幫手",admin:"系統管理員"};
   $("auditList").innerHTML=logs.length?logs.map(l=>{
-    const actor=l.actorName||l.actorEmail||"未記錄";
+    const actor=nameWithRole(l.actorName||l.actorEmail||"未記錄",l.actorRole);
     const role=roleMap[l.actorRole]||l.actorRole||"";
     return `<div class="audit-item"><div class="audit-head"><div><span class="audit-action">${actionMap[l.action]||esc(l.action)}｜${l.targetType==="student"?"學生":"服務紀錄"}</span><div class="audit-meta">${esc(l.studentName||"")}　${esc(dateText(l.createdAt))}<br>操作人：${esc(actor)}${role?`（${esc(role)}）`:""}</div></div><span class="status-pill">${esc(actor)}</span></div>${l.detail?`<div class="audit-detail">${esc(l.detail)}</div>`:""}</div>`;
   }).join(""):'<div class="empty">目前沒有操作紀錄。</div>';
@@ -452,18 +460,18 @@ async function exportStudentWorkbook(student, records){
       服務紀錄欄位重新分配：
       次數 A:B（2欄）
       日期 C:E（3欄）
-      對象 F:H（3欄）
-      方式 I:K（3欄）
-      類型 L:N（3欄）
-      內容摘述 O:AD（16欄）
+      對象 F:I（4欄）
+      方式 J:M（4欄）
+      類型 N:R（5欄）
+      內容摘述 S:AD（12欄）
       配合整體欄寬加大，內容摘述可容納更多文字，減少列高與頁數。
     */
     merge(10,1,2,"次數");
     merge(10,3,5,"日期");
-    merge(10,6,8,"對象");
-    merge(10,9,11,"方式");
-    merge(10,12,14,"類型");
-    merge(10,15,30,"內容摘述");
+    merge(10,6,9,"對象");
+    merge(10,10,13,"方式");
+    merge(10,14,18,"類型");
+    merge(10,19,30,"內容摘述");
     styleArea(10,1,10,30,{
       size:11,
       bold:true,
@@ -484,41 +492,43 @@ async function exportStudentWorkbook(student, records){
       const targets=displayMulti(r.targets || r.target);
       const methods=displayMulti(r.methods || r.method);
       const types=displayMulti(r.types || r.type);
+      const methodsExcel=asArray(r.methods || r.method).join("\n");
+      const typesExcel=asArray(r.types || r.type).join("\n");
       const summary=String(r.summary || "");
 
       // 內容摘述欄更寬，單一續列可容納更多內容。
-      const summaryParts=splitTextByDisplayUnits(summary, 1320);
+      const summaryParts=splitTextByDisplayUnits(summary, 1040);
       const firstRow=outputRow;
       const lastRow=outputRow + summaryParts.length - 1;
 
       if(lastRow > firstRow){
         ws.mergeCells(firstRow,1,lastRow,2);
         ws.mergeCells(firstRow,3,lastRow,5);
-        ws.mergeCells(firstRow,6,lastRow,8);
-        ws.mergeCells(firstRow,9,lastRow,11);
-        ws.mergeCells(firstRow,12,lastRow,14);
+        ws.mergeCells(firstRow,6,lastRow,9);
+        ws.mergeCells(firstRow,10,lastRow,13);
+        ws.mergeCells(firstRow,14,lastRow,18);
       }else{
         ws.mergeCells(firstRow,1,firstRow,2);
         ws.mergeCells(firstRow,3,firstRow,5);
-        ws.mergeCells(firstRow,6,firstRow,8);
-        ws.mergeCells(firstRow,9,firstRow,11);
-        ws.mergeCells(firstRow,12,firstRow,14);
+        ws.mergeCells(firstRow,6,firstRow,9);
+        ws.mergeCells(firstRow,10,firstRow,13);
+        ws.mergeCells(firstRow,14,firstRow,18);
       }
 
       ws.getCell(firstRow,1).value=recordIndex+1;
       ws.getCell(firstRow,3).value=r.date || "";
       ws.getCell(firstRow,6).value=targets;
-      ws.getCell(firstRow,9).value=methods;
-      ws.getCell(firstRow,12).value=types;
+      ws.getCell(firstRow,10).value=methodsExcel;
+      ws.getCell(firstRow,14).value=typesExcel;
 
       summaryParts.forEach((part,partIndex)=>{
         const row=firstRow+partIndex;
-        ws.mergeCells(row,15,row,30);
-        ws.getCell(row,15).value=part;
+        ws.mergeCells(row,19,row,30);
+        ws.getCell(row,19).value=part;
 
         styleArea(row,1,row,30,{size:10.5,vertical:"middle"});
 
-        [1,3,6,9,12].forEach(col=>{
+        [1,3,6,10,14].forEach(col=>{
           ws.getCell(row,col).alignment={
             horizontal:"center",
             vertical:"middle",
@@ -527,7 +537,7 @@ async function exportStudentWorkbook(student, records){
           };
         });
 
-        ws.getCell(row,15).alignment={
+        ws.getCell(row,19).alignment={
           horizontal:"left",
           vertical:"top",
           wrapText:true,
@@ -544,12 +554,12 @@ async function exportStudentWorkbook(student, records){
           因此每行容量由 62 調低為 56，並增加半行安全高度，
           只補足最後一行，不會像前版一樣留下大片空白。
         */
-        const summaryLines=estimateExcelTextLines(part,56);
+        const summaryLines=estimateExcelTextLines(part,44);
         // 「對象／方式／類型」欄位較窄，也必須納入列高估算，
         // 避免複選項目較多時文字被壓住或截斷。
-        const targetLines=partIndex===0 ? estimateExcelTextLines(targets,12) : 1;
-        const methodLines=partIndex===0 ? estimateExcelTextLines(methods,12) : 1;
-        const typeLines=partIndex===0 ? estimateExcelTextLines(types,12) : 1;
+        const targetLines=partIndex===0 ? estimateExcelTextLines(targets,16) : 1;
+        const methodLines=partIndex===0 ? Math.max(asArray(r.methods || r.method).length,estimateExcelTextLines(methodsExcel,16)) : 1;
+        const typeLines=partIndex===0 ? Math.max(asArray(r.types || r.type).length,estimateExcelTextLines(typesExcel,20)) : 1;
         const requiredLines=Math.max(summaryLines,targetLines,methodLines,typeLines);
         const calculatedHeight=10 + requiredLines*15.8;
         ws.getRow(row).height=Math.max(
@@ -566,10 +576,10 @@ async function exportStudentWorkbook(student, records){
     while(outputRow<=minimumEndRow){
       ws.mergeCells(outputRow,1,outputRow,2);
       ws.mergeCells(outputRow,3,outputRow,5);
-      ws.mergeCells(outputRow,6,outputRow,8);
-      ws.mergeCells(outputRow,9,outputRow,11);
-      ws.mergeCells(outputRow,12,outputRow,14);
-      ws.mergeCells(outputRow,15,outputRow,30);
+      ws.mergeCells(outputRow,6,outputRow,9);
+      ws.mergeCells(outputRow,10,outputRow,13);
+      ws.mergeCells(outputRow,14,outputRow,18);
+      ws.mergeCells(outputRow,19,outputRow,30);
       ws.getCell(outputRow,1).value=outputRow-10;
       styleArea(outputRow,1,outputRow,30,{size:10.5,vertical:"middle"});
       ws.getRow(outputRow).height=32;

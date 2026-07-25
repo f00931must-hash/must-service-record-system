@@ -65,13 +65,13 @@ service cloud.firestore {
 
     // 舊版資料僅供本人讀取及執行一次性移轉，不再由新版畫面寫入。
     match /teachers/{teacherId} {
-      allow read: if enabled() && request.auth.uid == teacherId;
+      allow read: if signedIn() && request.auth.uid == teacherId;
       allow write: if false;
       match /students/{studentId} {
-        allow read: if enabled() && request.auth.uid == teacherId;
+        allow read: if signedIn() && request.auth.uid == teacherId;
         allow write: if false;
         match /records/{recordId} {
-          allow read: if enabled() && request.auth.uid == teacherId;
+          allow read: if signedIn() && request.auth.uid == teacherId;
           allow write: if false;
         }
       }
