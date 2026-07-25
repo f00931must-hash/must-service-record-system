@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.0";
+const SERVICE_RECORD_BUILD = "v1.0.1-login-fix";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -45,27 +45,55 @@ function dateText(v){ if(!v) return ""; if(v?.toDate) return v.toDate().toLocale
 
 async function resolveAccess(user){
   const email=(user.email||"").toLowerCase();
-  const accessDoc=await getDoc(doc(db,"settings","serviceAccess"));
-  if(accessDoc.exists()){
-    const item=accessDoc.data()?.users?.[email];
-    if(item?.enabled===true){
-      return {email,role:item.role||"teacher",ownerEmail:(item.ownerEmail||email).toLowerCase(),displayName:item.displayName||user.displayName||email};
+
+  // 先沿用舊系統已存在的 authorizedTeachers/{uid}，避免尚未建立
+  // settings/serviceAccess 時整個系統無法登入。
+  try{
+    const legacy=await getDoc(doc(db,"authorizedTeachers",user.uid));
+    if(legacy.exists()&&legacy.data().enabled===true){
+      const d=legacy.data();
+      return {
+        email,
+        role:d.role||"teacher",
+        ownerEmail:(d.ownerEmail||email).toLowerCase(),
+        displayName:d.displayName||d.name||user.displayName||email
+      };
     }
+  }catch(err){
+    console.warn("讀取既有 authorizedTeachers 授權失敗",err);
   }
-  const legacy=await getDoc(doc(db,"authorizedTeachers",user.uid));
-  if(legacy.exists()&&legacy.data().enabled===true){
-    const d=legacy.data();
-    return {email,role:d.role||"teacher",ownerEmail:(d.ownerEmail||email).toLowerCase(),displayName:d.displayName||user.displayName||email};
+
+  // Portal 新版同步完成後，再自動採用集中式 serviceAccess。
+  try{
+    const accessDoc=await getDoc(doc(db,"settings","serviceAccess"));
+    if(accessDoc.exists()){
+      const item=accessDoc.data()?.users?.[email];
+      if(item?.enabled===true){
+        return {email,role:item.role||"teacher",ownerEmail:(item.ownerEmail||email).toLowerCase(),displayName:item.displayName||item.name||user.displayName||email};
+      }
+    }
+  }catch(err){
+    console.warn("serviceAccess 尚未建立或暫時無法讀取，改用既有授權名單",err);
   }
   return null;
 }
 
 async function loadTeacherDirectory(){
-  teacherDirectory=[];
-  const snap=await getDoc(doc(db,"settings","serviceAccess"));
-  const users=snap.exists()?snap.data().users||{}:{};
-  teacherDirectory=Object.entries(users).filter(([,u])=>u.enabled===true&&(u.role||"teacher")==="teacher").map(([email,u])=>({email,displayName:u.displayName||email})).sort((a,b)=>a.displayName.localeCompare(b.displayName,"zh-Hant"));
-  if(!teacherDirectory.some(x=>x.email===effectiveOwnerEmail())) teacherDirectory.push({email:effectiveOwnerEmail(),displayName:actorLabel()});
+  teacherDirectory=[{email:effectiveOwnerEmail(),displayName:actorLabel()}];
+  try{
+    const snap=await getDoc(doc(db,"settings","serviceAccess"));
+    const users=snap.exists()?snap.data().users||{}:{};
+    const synced=Object.entries(users)
+      .filter(([,u])=>u.enabled===true&&(u.role||"teacher")==="teacher")
+      .map(([email,u])=>({email:email.toLowerCase(),displayName:u.displayName||u.name||email}));
+    teacherDirectory=[...synced];
+    if(!teacherDirectory.some(x=>x.email===effectiveOwnerEmail())) teacherDirectory.push({email:effectiveOwnerEmail(),displayName:actorLabel()});
+    teacherDirectory.sort((a,b)=>a.displayName.localeCompare(b.displayName,"zh-Hant"));
+  }catch(err){
+    // 集中名單尚未同步時，仍可正常登入與使用自己的資料；
+    // 轉移名單會在 Portal 同步後自動出現。
+    console.warn("老師轉移名單尚未同步",err);
+  }
 }
 
 async function writeAudit({action,targetType,targetId,studentId="",studentName="",ownerEmail=effectiveOwnerEmail(),before=null,after=null,detail=""}){
