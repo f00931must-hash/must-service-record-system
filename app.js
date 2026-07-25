@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.3-migration-names-excel-readability";
+const SERVICE_RECORD_BUILD = "v1.0.4-portal-permission-sync";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 

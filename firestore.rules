@@ -44,16 +44,30 @@ service cloud.firestore {
       return enabled() && (role() == "teacher" || role() == "admin");
     }
 
+    function legacyManager() {
+      return legacyProfileExists()
+        && get(/databases/$(database)/documents/authorizedTeachers/$(request.auth.uid)).data.role == "admin";
+    }
+
+    function canManageAccess() {
+      return (accessExists() && profile().enabled == true && profile().role == "admin")
+        || legacyManager();
+    }
+
     function validTeacher(targetEmail) {
       return accessExists()
         && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail] != null
         && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].enabled == true
-        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].role == "teacher";
+        && (get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].role == "teacher"
+          || get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].role == "admin");
     }
 
     match /settings/serviceAccess {
       allow read: if signedIn();
-      allow write: if false; // 由 Portal 權限同步程序寫入
+      // 由 Portal 透過服務紀錄 Firebase 登入後同步。
+      // 第一次同步前，需在目前管理者的 authorizedTeachers/{uid} 加上 role: "admin"。
+      allow create, update: if canManageAccess();
+      allow delete: if false;
     }
 
     match /authorizedTeachers/{uid} {
