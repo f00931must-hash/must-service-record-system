@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.1-login-fix";
+const SERVICE_RECORD_BUILD = "v1.0.2-transfer-audit-excel-fix";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -80,20 +80,45 @@ async function resolveAccess(user){
 
 async function loadTeacherDirectory(){
   teacherDirectory=[{email:effectiveOwnerEmail(),displayName:actorLabel()}];
+  let loaded=false;
+
+  // Portal 新版同步名單：正式上線後優先採用。
   try{
     const snap=await getDoc(doc(db,"settings","serviceAccess"));
     const users=snap.exists()?snap.data().users||{}:{};
     const synced=Object.entries(users)
       .filter(([,u])=>u.enabled===true&&(u.role||"teacher")==="teacher")
       .map(([email,u])=>({email:email.toLowerCase(),displayName:u.displayName||u.name||email}));
-    teacherDirectory=[...synced];
-    if(!teacherDirectory.some(x=>x.email===effectiveOwnerEmail())) teacherDirectory.push({email:effectiveOwnerEmail(),displayName:actorLabel()});
-    teacherDirectory.sort((a,b)=>a.displayName.localeCompare(b.displayName,"zh-Hant"));
+    if(synced.length){
+      teacherDirectory=[...synced];
+      loaded=true;
+    }
   }catch(err){
-    // 集中名單尚未同步時，仍可正常登入與使用自己的資料；
-    // 轉移名單會在 Portal 同步後自動出現。
-    console.warn("老師轉移名單尚未同步",err);
+    console.warn("Portal 服務紀錄權限名單尚未同步",err);
   }
+
+  // 過渡期沿用既有 authorizedTeachers，讓目前所有老師即可互相轉移測試。
+  if(!loaded){
+    try{
+      const legacySnap=await getDocs(collection(db,"authorizedTeachers"));
+      const legacyTeachers=legacySnap.docs
+        .map(d=>d.data())
+        .filter(u=>u.enabled===true && u.email)
+        .map(u=>({
+          email:String(u.email).toLowerCase(),
+          displayName:u.displayName||u.name||u.email
+        }));
+      if(legacyTeachers.length) teacherDirectory=legacyTeachers;
+    }catch(err){
+      console.warn("無法讀取既有老師名單",err);
+    }
+  }
+
+  if(!teacherDirectory.some(x=>x.email===effectiveOwnerEmail())){
+    teacherDirectory.push({email:effectiveOwnerEmail(),displayName:actorLabel()});
+  }
+  teacherDirectory=[...new Map(teacherDirectory.map(x=>[x.email,x])).values()]
+    .sort((a,b)=>a.displayName.localeCompare(b.displayName,"zh-Hant"));
 }
 
 async function writeAudit({action,targetType,targetId,studentId="",studentName="",ownerEmail=effectiveOwnerEmail(),before=null,after=null,detail=""}){
@@ -181,7 +206,18 @@ async function openStudentRecords(studentId){
 
 async function loadRecentRecords(){recentRecords=[];const snap=await getDocs(query(collection(db,"records"),where("ownerEmail","==",effectiveOwnerEmail())));recentRecords=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.deleted!==true).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);$("recentRecords").innerHTML=recentRecords.length?`<table class="record-table"><thead><tr><th>日期</th><th>學生</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th></tr></thead><tbody>${recentRecords.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.studentName)}</td><td>${esc(displayMulti(r.targets||r.target))}</td><td>${esc(displayMulti(r.methods||r.method))}</td><td>${esc(displayMulti(r.types||r.type))}</td><td class="summary-cell">${esc(r.summary)}</td></tr>`).join("")}</tbody></table>`:'<div class="empty">目前沒有服務紀錄。</div>';}
 
-async function loadAuditLogs(){const email=(currentUser.email||"").toLowerCase();const snap=await getDocs(query(collection(db,"auditLogs"),where("actorEmail","==",email)));const logs=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)).slice(0,100);const actionMap={create:"新增",update:"修改",delete:"移至回收桶",restore:"還原",transfer:"轉移"};$("auditList").innerHTML=logs.length?logs.map(l=>`<div class="audit-item"><div class="audit-head"><div><span class="audit-action">${actionMap[l.action]||esc(l.action)}｜${l.targetType==="student"?"學生":"服務紀錄"}</span><div class="audit-meta">${esc(l.studentName||"")}　${esc(dateText(l.createdAt))}</div></div><span class="status-pill">${esc(l.actorRole||"")}</span></div>${l.detail?`<div class="audit-detail">${esc(l.detail)}</div>`:""}</div>`).join(""):'<div class="empty">目前沒有操作紀錄。</div>';}
+async function loadAuditLogs(){
+  const email=(currentUser.email||"").toLowerCase();
+  const snap=await getDocs(query(collection(db,"auditLogs"),where("actorEmail","==",email)));
+  const logs=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)).slice(0,100);
+  const actionMap={create:"新增",update:"修改",delete:"移至回收桶",restore:"還原",transfer:"轉移"};
+  const roleMap={teacher:"個管老師",assistant:"小幫手",admin:"系統管理員"};
+  $("auditList").innerHTML=logs.length?logs.map(l=>{
+    const actor=l.actorName||l.actorEmail||"未記錄";
+    const role=roleMap[l.actorRole]||l.actorRole||"";
+    return `<div class="audit-item"><div class="audit-head"><div><span class="audit-action">${actionMap[l.action]||esc(l.action)}｜${l.targetType==="student"?"學生":"服務紀錄"}</span><div class="audit-meta">${esc(l.studentName||"")}　${esc(dateText(l.createdAt))}<br>操作人：${esc(actor)}${role?`（${esc(role)}）`:""}</div></div><span class="status-pill">${esc(actor)}</span></div>${l.detail?`<div class="audit-detail">${esc(l.detail)}</div>`:""}</div>`;
+  }).join(""):'<div class="empty">目前沒有操作紀錄。</div>';
+}
 
 async function loadRecycleBin(){
   const [ss,rs]=await Promise.all([getDocs(query(collection(db,"students"),where("ownerEmail","==",effectiveOwnerEmail()),where("deleted","==",true))),getDocs(query(collection(db,"records"),where("ownerEmail","==",effectiveOwnerEmail()),where("deleted","==",true)))]);
@@ -508,8 +544,14 @@ async function exportStudentWorkbook(student, records){
           因此每行容量由 62 調低為 56，並增加半行安全高度，
           只補足最後一行，不會像前版一樣留下大片空白。
         */
-        const textLines=estimateExcelTextLines(part,56);
-        const calculatedHeight=10 + textLines*15.8;
+        const summaryLines=estimateExcelTextLines(part,56);
+        // 「對象／方式／類型」欄位較窄，也必須納入列高估算，
+        // 避免複選項目較多時文字被壓住或截斷。
+        const targetLines=partIndex===0 ? estimateExcelTextLines(targets,12) : 1;
+        const methodLines=partIndex===0 ? estimateExcelTextLines(methods,12) : 1;
+        const typeLines=partIndex===0 ? estimateExcelTextLines(types,12) : 1;
+        const requiredLines=Math.max(summaryLines,targetLines,methodLines,typeLines);
+        const calculatedHeight=10 + requiredLines*15.8;
         ws.getRow(row).height=Math.max(
           35,
           Math.min(390, calculatedHeight)

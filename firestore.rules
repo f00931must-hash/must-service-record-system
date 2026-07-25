@@ -57,7 +57,9 @@ service cloud.firestore {
     }
 
     match /authorizedTeachers/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      // 過渡期允許已授權使用者讀取老師名單，供學生轉移選單使用。
+      // 寫入仍由既有管理流程或日後 Portal 同步負責。
+      allow read: if enabled();
       allow write: if false;
     }
 
