@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.6-assistant-access-settings-hide";
+const SERVICE_RECORD_BUILD = "v1.0.7-stable";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -154,18 +154,50 @@ getRedirectResult(auth).catch(err=>console.error("Google redirect result failed"
 
 onAuthStateChanged(auth,async user=>{
   currentUser=user;
-  if(!user){$("loginView").classList.remove("hidden");$("appView").classList.add("hidden");return;}
-  const domain=(user.email||"").split("@")[1]||"";
-  if(allowedDomains.length&&!allowedDomains.includes(domain)){await signOut(auth);alert("此帳號不在允許的學校網域內。");return;}
-  accessProfile=await resolveAccess(user);
-  if(!accessProfile){await signOut(auth);alert("此帳號尚未取得服務紀錄系統權限，請由入口網站同步權限。");return;}
-  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
-  $("userEmail").textContent=user.email||"";
-  $("roleBadge").textContent=isAssistant()?"小幫手":"個管老師";
-  document.querySelectorAll(".teacher-only").forEach(el=>el.classList.toggle("hidden",!isTeacher()));
-  if(isAssistant() && document.querySelector(".nav.active")?.dataset.view === "settings") switchView("students");
-  $("aiEndpoint").value=localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT;
-  await loadTeacherDirectory(); await loadAll(); renderMigrationBox();
+  $("loginView").classList.add("hidden");
+  $("appView").classList.add("hidden");
+  $("loadingView")?.classList.remove("hidden");
+
+  if(!user){
+    accessProfile=null;
+    $("loadingView")?.classList.add("hidden");
+    $("loginView").classList.remove("hidden");
+    return;
+  }
+
+  try{
+    const domain=(user.email||"").split("@")[1]||"";
+    if(allowedDomains.length&&!allowedDomains.includes(domain)){
+      await signOut(auth);
+      alert("此帳號不在允許的學校網域內。");
+      return;
+    }
+
+    accessProfile=await resolveAccess(user);
+    if(!accessProfile){
+      await signOut(auth);
+      alert("此帳號尚未取得服務紀錄系統權限，請由入口網站同步權限。");
+      return;
+    }
+
+    $("userEmail").textContent=user.email||"";
+    $("roleBadge").textContent=isAssistant()?"小幫手":"個管老師";
+    document.querySelectorAll(".teacher-only").forEach(el=>el.classList.toggle("hidden",!isTeacher()));
+    $("aiEndpoint").value=localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT;
+
+    switchView("students");
+    await loadTeacherDirectory();
+    await loadAll();
+    renderMigrationBox();
+
+    $("loadingView")?.classList.add("hidden");
+    $("appView").classList.remove("hidden");
+  }catch(err){
+    console.error("服務紀錄系統初始化失敗",err);
+    $("loadingView")?.classList.add("hidden");
+    $("loginView").classList.remove("hidden");
+    alert("系統資料載入失敗："+(err?.message||err));
+  }
 });
 
 async function loadAll(){await loadStudents();await Promise.all([loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);if(isTeacher())renderTransferView();}
@@ -237,7 +269,10 @@ async function loadRecycleBin(){
   const [ss,rs]=await Promise.all([getDocs(query(collection(db,"students"),where("ownerEmail","==",effectiveOwnerEmail()),where("deleted","==",true))),getDocs(query(collection(db,"records"),where("ownerEmail","==",effectiveOwnerEmail()),where("deleted","==",true)))]);
   const deletedStudents=ss.docs.map(d=>({id:d.id,...d.data()}));const deletedRecords=rs.docs.map(d=>({id:d.id,...d.data()}));
   const items=[...deletedStudents.map(x=>({...x,_type:"student"})),...deletedRecords.map(x=>({...x,_type:"record"}))].sort((a,b)=>(b.deletedAt?.seconds||0)-(a.deletedAt?.seconds||0));
-  $("recycleList").innerHTML=items.length?items.map(x=>`<div class="recycle-item"><div class="recycle-head"><div><strong>${x._type==="student"?"學生":"服務紀錄"}｜${esc(x.name||x.studentName||"")}</strong><div class="audit-meta">刪除者：${esc(x.deletedBy||"")}　${esc(dateText(x.deletedAt))}</div>${x._type==="record"?`<div class="audit-detail">${esc(x.summary||"")}</div>`:""}</div><button class="primary-btn small-btn" data-restore-type="${x._type}" data-restore-id="${x.id}">還原</button></div></div>`).join(""):'<div class="empty">回收桶是空的。</div>';
+  $("recycleList").innerHTML=items.length?items.map(x=>{
+    const canRestore=x._type==="record"||isTeacher();
+    return `<div class="recycle-item"><div class="recycle-head"><div><strong>${x._type==="student"?"學生":"服務紀錄"}｜${esc(x.name||x.studentName||"")}</strong><div class="audit-meta">刪除者：${esc(x.deletedBy||"")}　${esc(dateText(x.deletedAt))}</div>${x._type==="record"?`<div class="audit-detail">${esc(x.summary||"")}</div>`:""}</div>${canRestore?`<button class="primary-btn small-btn" data-restore-type="${x._type}" data-restore-id="${x.id}">還原</button>`:`<span class="status-pill">僅個管老師可還原學生</span>`}</div></div>`;
+  }).join(""):'<div class="empty">回收桶是空的。</div>';
   document.querySelectorAll("[data-restore-id]").forEach(b=>b.onclick=()=>restoreItem(b.dataset.restoreType,b.dataset.restoreId));
 }
 
@@ -613,6 +648,7 @@ async function exportStudentWorkbook(student, records){
 
 
 function switchView(view){
+  if(!isTeacher() && ["settings","transfer"].includes(view)) view="students";
   document.querySelectorAll(".view").forEach(v=>v.classList.add("hidden"));
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");

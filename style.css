@@ -87,3 +87,10 @@ label{font-weight:700;display:block;margin-bottom:5px}
 .migration-box{margin-top:24px;padding:16px;border:1px dashed #94a3b8;border-radius:16px;background:#f8fafc}.warning{color:#b45309}.success{color:#047857}.danger-note{color:#b91c1c;font-weight:700}
 .record-actions{display:flex;gap:6px;flex-wrap:wrap}.small-btn{padding:7px 10px;border-radius:10px;font-size:13px}
 @media(max-width:800px){.user-area{flex-wrap:wrap}.record-table{display:block;overflow:auto}.transfer-bar{align-items:stretch}}
+
+
+/* v1.0.7 登入權限載入畫面 */
+.loading-view{min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#edf8ff,#fff)}
+.loading-card{display:flex;align-items:center;gap:14px;padding:22px 26px;border-radius:18px;background:#fff;box-shadow:0 16px 44px rgba(17,47,77,.14)}
+.loading-spinner{width:24px;height:24px;border:3px solid #dbeafe;border-top-color:var(--sky);border-radius:50%;animation:service-spin .8s linear infinite}
+@keyframes service-spin{to{transform:rotate(360deg)}}

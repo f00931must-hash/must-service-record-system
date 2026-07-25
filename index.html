@@ -4,15 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>資源教室服務紀錄系統</title>
-  <link rel="stylesheet" href="./style.css?v=1.0.6">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2216%22 fill=%22%2349bff2%22/><text x=%2232%22 y=%2243%22 font-size=%2234%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22Arial%22 font-weight=%22700%22>M</text></svg>">
+  <link rel="stylesheet" href="./style.css?v=1.0.7">
 </head>
 <body>
+  <div id="loadingView" class="loading-view hidden"><div class="loading-card"><div class="loading-spinner"></div><strong>正在確認權限並載入資料…</strong></div></div>
+
   <div id="loginView" class="login-view">
     <div class="login-card">
       <div class="logo">M</div>
       <h1>資源教室服務紀錄系統</h1>
       <p>個管老師與小幫手的學生服務紀錄管理</p>
-      <div class="hint">版本 v1.0.6｜協作者權限修正版</div>
+      <div class="hint">版本 v1.0.7 Stable｜協作者權限與載入流程修正版</div>
       <button id="loginBtn" class="primary-btn">使用 Google 帳號登入</button>
       <a href="../" class="back-link">回入口網站</a>
     </div>
@@ -51,6 +54,6 @@
   <div id="modal" class="modal hidden"><div class="modal-box"><button id="modalClose" class="modal-close">×</button><div id="modalContent"></div></div></div>
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script type="module" src="./app.js?v=1.0.6"></script>
+  <script type="module" src="./app.js?v=1.0.7"></script>
 </body>
 </html>
