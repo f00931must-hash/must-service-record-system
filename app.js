@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.0.5-team-audit-transfer-fix";
+const SERVICE_RECORD_BUILD = "v1.0.6-assistant-access-settings-hide";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -163,6 +163,7 @@ onAuthStateChanged(auth,async user=>{
   $("userEmail").textContent=user.email||"";
   $("roleBadge").textContent=isAssistant()?"小幫手":"個管老師";
   document.querySelectorAll(".teacher-only").forEach(el=>el.classList.toggle("hidden",!isTeacher()));
+  if(isAssistant() && document.querySelector(".nav.active")?.dataset.view === "settings") switchView("students");
   $("aiEndpoint").value=localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT;
   await loadTeacherDirectory(); await loadAll(); renderMigrationBox();
 });

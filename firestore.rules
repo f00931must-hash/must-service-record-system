@@ -20,6 +20,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/settings/serviceAccess).data.users[email()];
     }
 
+    function assistantProfileExists() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/serviceAssistants/$(email()))
+        && get(/databases/$(database)/documents/serviceAssistants/$(email())).data.enabled == true;
+    }
+
+    function assistantProfile() {
+      return get(/databases/$(database)/documents/serviceAssistants/$(email())).data;
+    }
+
     function legacyProfileExists() {
       return signedIn()
         && exists(/databases/$(database)/documents/authorizedTeachers/$(request.auth.uid))
@@ -27,17 +37,23 @@ service cloud.firestore {
     }
 
     function enabled() {
-      return (accessExists() && profile().enabled == true) || legacyProfileExists();
+      return (accessExists() && profile().enabled == true)
+        || assistantProfileExists()
+        || legacyProfileExists();
     }
 
     function role() {
-      return accessExists() ? profile().role : "teacher";
+      return accessExists() ? profile().role
+        : assistantProfileExists() ? "assistant"
+        : "teacher";
     }
 
     function ownerEmail() {
       return accessExists() && role() == "assistant"
         ? profile().ownerEmail.lower()
-        : email();
+        : assistantProfileExists()
+          ? assistantProfile().ownerEmail.lower()
+          : email();
     }
 
     function isTeacher() {
