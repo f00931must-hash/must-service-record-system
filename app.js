@@ -110,7 +110,7 @@ async function resolveAccess(user){
 
 async function loadTeacherDirectory(){
   teacherDirectory=[{email:effectiveOwnerEmail(),displayName:actorLabel()}];
-  accessNameDirectory={(currentUser?.email||"").toLowerCase():baseActorName()};
+  accessNameDirectory={[(currentUser?.email||"").toLowerCase()]:baseActorName()};
   let loaded=false;
 
   // Portal 新版同步名單：正式上線後優先採用。
