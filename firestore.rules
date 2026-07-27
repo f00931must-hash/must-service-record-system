@@ -10,23 +10,14 @@ service cloud.firestore {
       return request.auth.token.email.lower();
     }
 
-    function accessDocExists() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/settings/serviceAccess);
-    }
-
-    function accessUsers() {
-      return get(/databases/$(database)/documents/settings/serviceAccess).data.users;
-    }
-
-    // 使用「in」判斷 Map key，避免協作者不在 serviceAccess 時因直接索引不存在 key 而整段 Rules 評估失敗。
     function accessExists() {
-      return accessDocExists()
-        && email() in accessUsers();
+      return signedIn()
+        && exists(/databases/$(database)/documents/settings/serviceAccess)
+        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[email()] != null;
     }
 
     function profile() {
-      return accessUsers()[email()];
+      return get(/databases/$(database)/documents/settings/serviceAccess).data.users[email()];
     }
 
     function assistantProfileExists() {
@@ -79,48 +70,45 @@ service cloud.firestore {
         || legacyManager();
     }
 
-    function syncedTeacher(targetEmail) {
-      return accessDocExists()
-        && targetEmail in accessUsers()
-        && accessUsers()[targetEmail].enabled == true
-        && (accessUsers()[targetEmail].role == "teacher"
-          || accessUsers()[targetEmail].role == "admin");
-    }
-
-    // 正常情況使用 Portal 同步名單驗證；過渡期允許老師依畫面上的既有老師名單轉移。
-    function validTransferTarget(targetEmail) {
-      return targetEmail is string
-        && targetEmail != email()
-        && (syncedTeacher(targetEmail) || targetEmail.matches('^[^@]+@[^@]+\\.[^@]+$'));
+    function validTeacher(targetEmail) {
+      return accessExists()
+        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail] != null
+        && get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].enabled == true
+        && (get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].role == "teacher"
+          || get(/databases/$(database)/documents/settings/serviceAccess).data.users[targetEmail].role == "admin");
     }
 
     match /settings/serviceAccess {
       allow read: if signedIn();
+      // 由 Portal 透過服務紀錄 Firebase 登入後同步。
+      // 第一次同步前，需在目前管理者的 authorizedTeachers/{uid} 加上 role: "admin"。
       allow create, update: if canManageAccess();
       allow delete: if false;
     }
 
+
     match /serviceAssistants/{assistantEmail} {
-      allow get: if signedIn()
-        && (assistantEmail == email()
-          || (isTeacher() && resource.data.ownerEmail.lower() == email()));
-      allow list: if isTeacher();
+      // 協作者可讀自己的授權；個管老師只能管理 ownerEmail 為自己的協作者。
+      allow read: if signedIn() && (assistantEmail == email() || (isTeacher() && resource.data.ownerEmail == email()));
       allow create: if isTeacher()
-        && assistantEmail == request.resource.data.email.lower()
-        && request.resource.data.ownerEmail.lower() == email()
+        && assistantEmail == request.resource.data.email
+        && request.resource.data.ownerEmail == email()
         && request.resource.data.role == "assistant";
       allow update: if isTeacher()
-        && resource.data.ownerEmail.lower() == email()
-        && request.resource.data.ownerEmail.lower() == email()
+        && resource.data.ownerEmail == email()
+        && request.resource.data.ownerEmail == email()
         && request.resource.data.role == "assistant";
-      allow delete: if isTeacher() && resource.data.ownerEmail.lower() == email();
+      allow delete: if isTeacher() && resource.data.ownerEmail == email();
     }
 
     match /authorizedTeachers/{uid} {
+      // 過渡期允許已授權使用者讀取老師名單，供學生轉移選單使用。
+      // 寫入仍由既有管理流程或日後 Portal 同步負責。
       allow read: if enabled();
       allow write: if false;
     }
 
+    // 舊版資料僅供本人讀取及執行一次性移轉，不再由新版畫面寫入。
     match /teachers/{teacherId} {
       allow read: if signedIn() && request.auth.uid == teacherId;
       allow write: if false;
@@ -135,27 +123,28 @@ service cloud.firestore {
     }
 
     match /students/{studentId} {
-      allow read: if enabled() && resource.data.ownerEmail.lower() == ownerEmail();
+      allow read: if enabled() && resource.data.ownerEmail == ownerEmail();
 
       allow create: if enabled()
-        && request.resource.data.ownerEmail.lower() == ownerEmail()
-        && request.resource.data.createdBy.lower() == email()
+        && request.resource.data.ownerEmail == ownerEmail()
+        && request.resource.data.createdBy == email()
         && request.resource.data.deleted == false;
 
       allow update: if enabled()
-        && resource.data.ownerEmail.lower() == ownerEmail()
+        && resource.data.ownerEmail == ownerEmail()
         && (
+          // 一般修改：不得偷改資料歸屬；小幫手也不得刪除學生。
           (
             request.resource.data.ownerEmail == resource.data.ownerEmail
-            && request.resource.data.createdBy == resource.data.createdBy
             && (isTeacher() || request.resource.data.deleted == resource.data.deleted)
           )
           ||
+          // 單一或批次轉移：只有目前個管老師可以轉交給有效老師。
           (
             isTeacher()
             && resource.data.deleted != true
             && request.resource.data.ownerEmail != resource.data.ownerEmail
-            && validTransferTarget(request.resource.data.ownerEmail.lower())
+            && validTeacher(request.resource.data.ownerEmail)
           )
         );
 
@@ -163,25 +152,32 @@ service cloud.firestore {
     }
 
     match /records/{recordId} {
-      allow read: if enabled() && resource.data.ownerEmail.lower() == ownerEmail();
+      // 老師可讀取自己名下全部紀錄；小幫手只能讀取自己建立的紀錄。
+      allow read: if enabled()
+        && resource.data.ownerEmail == ownerEmail()
+        && (isTeacher() || resource.data.createdBy == email());
 
       allow create: if enabled()
-        && request.resource.data.ownerEmail.lower() == ownerEmail()
-        && request.resource.data.createdBy.lower() == email()
+        && request.resource.data.ownerEmail == ownerEmail()
+        && request.resource.data.createdBy == email()
         && request.resource.data.deleted == false
         && exists(/databases/$(database)/documents/students/$(request.resource.data.studentId))
-        && get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.ownerEmail.lower() == ownerEmail();
+        && get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.ownerEmail == ownerEmail();
 
       allow update: if enabled()
-        && resource.data.ownerEmail.lower() == ownerEmail()
-        && request.resource.data.studentId == resource.data.studentId
-        && request.resource.data.createdBy == resource.data.createdBy
+        && resource.data.ownerEmail == ownerEmail()
         && (
-          request.resource.data.ownerEmail == resource.data.ownerEmail
+          // 一般修改：老師可管理全部；小幫手僅能修改自己建立的紀錄，且不得改變建立者與歸屬。
+          (
+            request.resource.data.ownerEmail == resource.data.ownerEmail
+            && request.resource.data.createdBy == resource.data.createdBy
+            && (isTeacher() || resource.data.createdBy == email())
+          )
           || (
+            // 轉移紀錄只有老師可執行。
             isTeacher()
             && request.resource.data.ownerEmail != resource.data.ownerEmail
-            && validTransferTarget(request.resource.data.ownerEmail.lower())
+            && validTeacher(request.resource.data.ownerEmail)
           )
         );
 
@@ -189,22 +185,22 @@ service cloud.firestore {
     }
 
     match /auditLogs/{logId} {
-      allow read: if enabled() && resource.data.ownerEmail.lower() == ownerEmail();
+      allow read: if enabled()
+        && (isTeacher() ? resource.data.ownerEmail == ownerEmail() : resource.data.actorEmail == email());
       allow create: if enabled()
-        && request.resource.data.actorEmail.lower() == email()
-        && request.resource.data.ownerEmail.lower() == ownerEmail();
+        && request.resource.data.actorEmail == email();
       allow update, delete: if false;
     }
 
     match /transferLogs/{logId} {
       allow read: if enabled()
-        && (resource.data.fromEmail.lower() == ownerEmail()
-          || resource.data.toEmail.lower() == ownerEmail()
-          || resource.data.operatorEmail.lower() == email());
+        && (resource.data.fromEmail == ownerEmail()
+          || resource.data.toEmail == ownerEmail()
+          || resource.data.operatorEmail == email());
       allow create: if isTeacher()
-        && request.resource.data.operatorEmail.lower() == email()
-        && request.resource.data.fromEmail.lower() == email()
-        && validTransferTarget(request.resource.data.toEmail.lower());
+        && request.resource.data.operatorEmail == email()
+        && request.resource.data.fromEmail == email()
+        && validTeacher(request.resource.data.toEmail);
       allow update, delete: if false;
     }
 
