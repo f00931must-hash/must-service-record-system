@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.2.0-private-records";
+const SERVICE_RECORD_BUILD = "v1.2.0-rc-final-adjustments";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -21,18 +21,28 @@ let accessProfile = null;
 let students = [];
 let recentRecords = [];
 let teacherDirectory = [];
+let accessNameDirectory = {};
 
 const DISABILITY_OPTIONS = ["自閉症","情緒障礙","學習障礙","肢體障礙","智能障礙","視覺障礙","聽覺障礙","腦性麻痺","多重障礙"];
 const TARGET_OPTIONS = ["學生本人","家長","導師","授課教師","同儕","校內行政人員","其他"];
-const METHOD_OPTIONS = ["面談","電話","LINE／訊息","電子郵件","會議","到班觀察","其他"];
-const SERVICE_TYPE_OPTIONS = ["關懷與追蹤","學習輔導","生活輔導","心理支持","行政協助","人際關係","轉介與資源連結","合理調整","ISP／個案會議","其他"];
+const METHOD_OPTIONS = ["面談","電話","LINE／訊息","電子郵件","活動／會議","到班觀察","其他"];
+const SERVICE_TYPE_OPTIONS = ["關懷與追蹤","學習輔導","生活輔導","心理支持","行政協助","人際關係","轉介與資源連結","合理調整","ISP／個案會議","活動參與","其他"];
 
 function asArray(value){ if(Array.isArray(value)) return value.filter(Boolean); if(value===null||value===undefined||value==="") return []; return [String(value)]; }
 function esc(v){ return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m])); }
 function currentAcademicYearROC(){ const now=new Date(); const y=now.getFullYear()-1911; return now.getMonth()>=7?y:y-1; }
 function gradeNumberToText(n){ return ({1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"七"})[n]||String(n); }
-function calculatedGrade(student){ const entry=Number(student.entryAcademicYear||0); if(!entry) return student.grade||""; const n=currentAcademicYearROC()-entry+1; if(n<1) return "尚未入學"; const prefix=String(student.program||"").includes("研")?"研":"大"; return `${prefix}${gradeNumberToText(n)}${student.gradeSuffix||""}`; }
+function calculatedGrade(student){
+  const entry=Number(student.entryAcademicYear||0);
+  if(!entry) return "";
+  const n=currentAcademicYearROC()-entry+1;
+  if(n<1) return "尚未入學";
+  const prefix=String(student.program||"").includes("研")?"研":"";
+  return `${prefix}${gradeNumberToText(n)}${student.gradeSuffix||""}`;
+}
 function displayMulti(value){ return asArray(value).join("、"); }
+function normalizedMethods(value){ return asArray(value).map(x=>x==="會議"?"活動／會議":x); }
+function displayMethods(value){ return displayMulti(normalizedMethods(value)); }
 function checkboxOptions(name,options,selected=[]){ const values=asArray(selected); return options.map(x=>`<label class="option-chip"><input type="checkbox" name="${name}" value="${esc(x)}" ${values.includes(x)?"checked":""}><span>${esc(x)}</span></label>`).join(""); }
 function splitTextByDisplayUnits(text,maxUnits=820){ const source=String(text||""); if(!source) return [""]; const parts=[]; let current="",units=0; const charUnits=ch=>/[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/.test(ch)?2:1; for(const ch of source){ const u=ch==="\n"?0:charUnits(ch); if(units+u>maxUnits&&current){parts.push(current);current="";units=0;} current+=ch;units+=u;if(ch==="\n"&&units>maxUnits*.82){parts.push(current);current="";units=0;} } if(current||!parts.length)parts.push(current); return parts; }
 
@@ -48,19 +58,12 @@ function nameWithRole(name,role=accessProfile?.role){
   return `${raw}${suffix}`;
 }
 function actorLabel(){ return nameWithRole(baseActorName(),accessProfile?.role); }
-function actorEmail(){ return (currentUser?.email||"").toLowerCase(); }
-function canManageRecord(record){ return isTeacher() || String(record?.createdBy||"").toLowerCase()===actorEmail(); }
-function recordCreatorLabel(record){
-  const email=String(record?.createdBy||"").toLowerCase();
-  if(!email) return "未記錄";
-  if(email===actorEmail()) return actorLabel();
-  const person=teacherDirectory.find(x=>String(x.email||"").toLowerCase()===email);
-  return person?.displayName || email;
+function creatorDisplayName(record){
+  const email=String(record?.createdBy||record?.createdByEmail||"").toLowerCase();
+  return record?.createdByName || accessNameDirectory[email] || (email?email.split("@")[0]:"未記錄");
 }
-function recordsQueryForOwner(extraConstraints=[]){
-  const constraints=[where("ownerEmail","==",effectiveOwnerEmail()),...extraConstraints];
-  if(isAssistant()) constraints.push(where("createdBy","==",actorEmail()));
-  return query(collection(db,"records"),...constraints);
+function canManageRecord(record){
+  return isTeacher() || String(record?.createdBy||"").toLowerCase()===(currentUser?.email||"").toLowerCase();
 }
 function safeClone(obj){ return JSON.parse(JSON.stringify(obj||{})); }
 function dateText(v){ if(!v) return ""; if(v?.toDate) return v.toDate().toLocaleString("zh-TW"); if(v instanceof Date) return v.toLocaleString("zh-TW"); return String(v); }
@@ -107,12 +110,14 @@ async function resolveAccess(user){
 
 async function loadTeacherDirectory(){
   teacherDirectory=[{email:effectiveOwnerEmail(),displayName:actorLabel()}];
+  accessNameDirectory={(currentUser?.email||"").toLowerCase():baseActorName()};
   let loaded=false;
 
   // Portal 新版同步名單：正式上線後優先採用。
   try{
     const snap=await getDoc(doc(db,"settings","serviceAccess"));
     const users=snap.exists()?snap.data().users||{}:{};
+    accessNameDirectory={...accessNameDirectory,...Object.fromEntries(Object.entries(users).map(([email,u])=>[email.toLowerCase(),u.displayName||u.name||email.split("@")[0]]))};
     const synced=Object.entries(users)
       .filter(([,u])=>u.enabled===true&&["teacher","admin"].includes(u.role||"teacher"))
       .map(([email,u])=>({email:email.toLowerCase(),displayName:nameWithRole(u.displayName||u.name||email,"teacher")}));
@@ -168,21 +173,58 @@ getRedirectResult(auth).catch(err=>console.error("Google redirect result failed"
 
 onAuthStateChanged(auth,async user=>{
   currentUser=user;
-  if(!user){$("loginView").classList.remove("hidden");$("appView").classList.add("hidden");return;}
-  const domain=(user.email||"").split("@")[1]||"";
-  if(allowedDomains.length&&!allowedDomains.includes(domain)){await signOut(auth);alert("此帳號不在允許的學校網域內。");return;}
-  accessProfile=await resolveAccess(user);
-  if(!accessProfile){await signOut(auth);alert("此帳號尚未取得服務紀錄系統權限，請由入口網站同步權限。");return;}
-  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
-  $("userEmail").textContent=user.email||"";
-  $("roleBadge").textContent=isAssistant()?"小幫手":"個管老師";
-  document.querySelectorAll(".teacher-only").forEach(el=>el.classList.toggle("hidden",!isTeacher()));
-  if(isAssistant() && document.querySelector(".nav.active")?.dataset.view === "settings") switchView("students");
-  $("aiEndpoint").value=localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT;
-  await loadTeacherDirectory(); await loadAll(); renderMigrationBox();
+  $("loginView").classList.add("hidden");
+  $("appView").classList.add("hidden");
+  $("loadingView")?.classList.remove("hidden");
+
+  if(!user){
+    accessProfile=null;
+    $("loadingView")?.classList.add("hidden");
+    $("loginView").classList.remove("hidden");
+    return;
+  }
+
+  try{
+    const domain=(user.email||"").split("@")[1]||"";
+    if(allowedDomains.length&&!allowedDomains.includes(domain)){
+      await signOut(auth);
+      alert("此帳號不在允許的學校網域內。");
+      return;
+    }
+
+    accessProfile=await resolveAccess(user);
+    if(!accessProfile){
+      await signOut(auth);
+      alert("此帳號尚未取得服務紀錄系統權限，請由入口網站同步權限。");
+      return;
+    }
+
+    $("userEmail").textContent=user.email||"";
+    $("roleBadge").textContent=isAssistant()?"小幫手":"個管老師";
+    document.querySelectorAll(".teacher-only").forEach(el=>el.classList.toggle("role-hidden",!isTeacher()));
+    $("aiEndpoint").value=localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT;
+
+    switchView("students");
+    await loadTeacherDirectory();
+    await loadAll();
+    renderMigrationBox();
+
+    $("loadingView")?.classList.add("hidden");
+    $("appView").classList.remove("hidden");
+  }catch(err){
+    console.error("服務紀錄系統初始化失敗",err);
+    $("loadingView")?.classList.add("hidden");
+    $("loginView").classList.remove("hidden");
+    alert("系統資料載入失敗："+(err?.message||err));
+  }
 });
 
-async function loadAll(){await loadStudents();await Promise.all([loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);if(isTeacher())renderTransferView();}
+async function loadAll(){
+  await loadStudents();
+  await Promise.all([loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);
+  renderBatchDownloadView();
+  if(isTeacher())renderTransferView();
+}
 async function loadStudents(){const snap=await getDocs(query(collection(db,"students"),where("ownerEmail","==",effectiveOwnerEmail())));students=snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.deleted!==true).sort((a,b)=>(a.name||"").localeCompare(b.name||"","zh-Hant"));renderStudents();}
 
 function renderStudents(){
@@ -195,14 +237,14 @@ function renderStudents(){
   document.querySelectorAll("[data-transfer-student]").forEach(b=>b.onclick=()=>openTransferDialog([b.dataset.transferStudent]));
 }
 
-function studentPayload(fd){return {name:fd.get("name"),biologicalSex:fd.get("biologicalSex"),studentId:fd.get("studentId"),department:fd.get("department"),program:fd.get("program"),entryAcademicYear:fd.get("entryAcademicYear")?Number(fd.get("entryAcademicYear")):null,gradeSuffix:fd.get("gradeSuffix")||"",grade:fd.get("grade"),disabilities:fd.getAll("disabilities"),studentNote:fd.get("studentNote")||""};}
+function studentPayload(fd){return {name:fd.get("name"),biologicalSex:fd.get("biologicalSex"),studentId:fd.get("studentId"),department:fd.get("department"),program:fd.get("program"),entryAcademicYear:fd.get("entryAcademicYear")?Number(fd.get("entryAcademicYear")):null,gradeSuffix:fd.get("gradeSuffix")||"",disabilities:fd.getAll("disabilities"),studentNote:fd.get("studentNote")||""};}
 
 function openStudentForm(id=""){
   const s=students.find(x=>x.id===id)||{};const existing=s.disabilities||s.issues||[];
-  openModal(`<h2>${id?"修改學生資料":"新增學生"}</h2><form id="studentForm" class="form-grid"><div><label>學生姓名</label><input name="name" class="field" required value="${esc(s.name||"")}"></div><div><label>生理性別</label><select name="biologicalSex" class="field"><option></option><option ${s.biologicalSex==="男"?"selected":""}>男</option><option ${s.biologicalSex==="女"?"selected":""}>女</option></select></div><div><label>學號</label><input name="studentId" class="field" required value="${esc(s.studentId||"")}"></div><div><label>科系／班級</label><input name="department" class="field" value="${esc(s.department||"")}"></div><div><label>學制</label><input name="program" class="field" value="${esc(s.program||"")}" placeholder="例如：四技、二技、碩士班"></div><div><label>入學學年度（民國）</label><input id="entryAcademicYearInput" name="entryAcademicYear" type="number" class="field" value="${esc(s.entryAcademicYear||"")}"></div><div><label>班級後綴</label><input id="gradeSuffixInput" name="gradeSuffix" class="field" value="${esc(s.gradeSuffix||"")}"></div><div><label>目前年級（自動計算）</label><input id="gradePreview" class="field" readonly value="${esc(calculatedGrade(s))}"></div><div class="full"><label>舊資料年級</label><input name="grade" class="field" value="${esc(s.grade||"")}"></div><div class="full"><label>學生障別</label><div class="option-grid">${checkboxOptions("disabilities",DISABILITY_OPTIONS,existing)}</div></div><div class="full"><label>備註</label><textarea name="studentNote" class="field">${esc(s.studentNote||"")}</textarea></div><div class="full card-actions"><button class="primary-btn" type="submit">儲存學生資料</button>${id&&isTeacher()?'<button class="danger-btn" type="button" id="deleteStudentBtn">移至回收桶</button>':""}</div></form>`);
-  const updatePreview=()=>{$("gradePreview").value=calculatedGrade({entryAcademicYear:Number($("entryAcademicYearInput")?.value||0),program:$("studentForm")?.elements?.program?.value||"",gradeSuffix:$("gradeSuffixInput")?.value||"",grade:$("studentForm")?.elements?.grade?.value||""});};
-  [$("entryAcademicYearInput"),$("gradeSuffixInput"),$("studentForm")?.elements?.program,$("studentForm")?.elements?.grade].forEach(el=>el?.addEventListener("input",updatePreview));
-  $("studentForm").onsubmit=async e=>{e.preventDefault();const data=studentPayload(new FormData(e.target));if(id){const before=safeClone(s);await updateDoc(doc(db,"students",id),{...data,updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase()});await writeAudit({action:"update",targetType:"student",targetId:id,studentId:id,studentName:data.name,before,after:data});}else{const ref=await addDoc(collection(db,"students"),{...data,ownerEmail:effectiveOwnerEmail(),createdAt:serverTimestamp(),createdBy:(currentUser.email||"").toLowerCase(),updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),deleted:false});await writeAudit({action:"create",targetType:"student",targetId:ref.id,studentId:ref.id,studentName:data.name,after:data});}closeModal();toast("學生資料已儲存");await loadAll();};
+  openModal(`<h2>${id?"修改學生資料":"新增學生"}</h2><form id="studentForm" class="form-grid"><div><label>學生姓名</label><input name="name" class="field" required value="${esc(s.name||"")}"></div><div><label>生理性別</label><select name="biologicalSex" class="field"><option></option><option ${s.biologicalSex==="男"?"selected":""}>男</option><option ${s.biologicalSex==="女"?"selected":""}>女</option></select></div><div><label>學號</label><input name="studentId" class="field" required value="${esc(s.studentId||"")}"></div><div><label>科系／班級</label><input name="department" class="field" value="${esc(s.department||"")}"></div><div><label>學制</label><input name="program" class="field" value="${esc(s.program||"")}" placeholder="例如：四技、二技、碩士班"></div><div><label>入學學年度（民國）</label><input id="entryAcademicYearInput" name="entryAcademicYear" type="number" class="field" value="${esc(s.entryAcademicYear||"")}"></div><div><label>班級後綴</label><input id="gradeSuffixInput" name="gradeSuffix" class="field" value="${esc(s.gradeSuffix||"")}"></div><div><label>目前年級（每年 8/1 自動升級）</label><input id="gradePreview" class="field" readonly value="${esc(calculatedGrade(s))}"></div><div class="full"><label>學生障別</label><div class="option-grid">${checkboxOptions("disabilities",DISABILITY_OPTIONS,existing)}</div></div><div class="full"><label>備註</label><textarea name="studentNote" class="field">${esc(s.studentNote||"")}</textarea></div><div class="full card-actions"><button class="primary-btn" type="submit">儲存學生資料</button>${id&&isTeacher()?'<button class="danger-btn" type="button" id="deleteStudentBtn">移至回收桶</button>':""}</div></form>`);
+  const updatePreview=()=>{$("gradePreview").value=calculatedGrade({entryAcademicYear:Number($("entryAcademicYearInput")?.value||0),program:$("studentForm")?.elements?.program?.value||"",gradeSuffix:$("gradeSuffixInput")?.value||""});};
+  [$("entryAcademicYearInput"),$("gradeSuffixInput"),$("studentForm")?.elements?.program].forEach(el=>el?.addEventListener("input",updatePreview));
+  $("studentForm").onsubmit=async e=>{e.preventDefault();const data=studentPayload(new FormData(e.target));if(id){const before=safeClone(s);await updateDoc(doc(db,"students",id),{...data,updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase()});await writeAudit({action:"update",targetType:"student",targetId:id,studentId:id,studentName:data.name,before,after:data});}else{const ref=await addDoc(collection(db,"students"),{...data,ownerEmail:effectiveOwnerEmail(),createdAt:serverTimestamp(),createdBy:(currentUser.email||"").toLowerCase(),createdByEmail:(currentUser.email||"").toLowerCase(),createdByName:baseActorName(),updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),updatedByName:baseActorName(),deleted:false});await writeAudit({action:"create",targetType:"student",targetId:ref.id,studentId:ref.id,studentName:data.name,after:data});}closeModal();toast("學生資料已儲存");await loadAll();};
   if(id&&isTeacher()) $("deleteStudentBtn").onclick=()=>softDeleteStudent(s);
 }
 
@@ -213,30 +255,44 @@ async function softDeleteStudent(s){
   await writeAudit({action:"delete",targetType:"student",targetId:s.id,studentId:s.id,studentName:s.name,before:s,detail:`學生與 ${recSnap.size} 筆服務紀錄移至回收桶`});closeModal();await loadAll();toast("已移至回收桶");
 }
 
-async function getStudentRecords(studentId,{includeDeleted=false}={}){const snap=await getDocs(recordsQueryForOwner([where("studentId","==",studentId)]));return snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>includeDeleted||r.deleted!==true).sort((a,b)=>(a.date||"").localeCompare(b.date||""));}
+async function getStudentRecords(studentId,{includeDeleted=false}={}){
+  const constraints=[where("studentId","==",studentId),where("ownerEmail","==",effectiveOwnerEmail())];
+  if(isAssistant())constraints.push(where("createdBy","==",(currentUser.email||"").toLowerCase()));
+  const snap=await getDocs(query(collection(db,"records"),...constraints));
+  return snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>includeDeleted||r.deleted!==true).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+}
 
 async function openRecordForm(studentId,recordId=""){
-  const s=students.find(x=>x.id===studentId);if(!s)return;let existing={};if(recordId){const snap=await getDoc(doc(db,"records",recordId));existing=snap.exists()?{id:snap.id,...snap.data()}:{};if(!canManageRecord(existing))return alert("小幫手只能查看與修改自己建立的服務紀錄。");}
-  openModal(`<h2>${recordId?"修改":"新增"}服務紀錄｜${esc(s.name)}</h2><form id="recordForm" class="form-grid"><div class="full"><label>日期</label><input name="date" type="date" class="field date-field" required value="${esc(existing.date||new Date().toISOString().slice(0,10))}"></div><div class="full multi-section"><label>對象（可複選）</label><div class="option-grid">${checkboxOptions("targets",TARGET_OPTIONS,existing.targets||existing.target)}</div></div><div class="full multi-section"><label>方式（可複選）</label><div class="option-grid">${checkboxOptions("methods",METHOD_OPTIONS,existing.methods||existing.method)}</div></div><div class="full multi-section"><label>類型（可複選）</label><div class="option-grid">${checkboxOptions("types",SERVICE_TYPE_OPTIONS,existing.types||existing.type)}</div></div><div class="full ai-box"><label>內容摘述</label><textarea id="summaryInput" name="summary" class="field summary-editor" required>${esc(existing.summary||"")}</textarea><div class="ai-actions"><button type="button" id="aiPolishBtn" class="ghost-btn">✨ AI 潤飾內容摘述</button><button type="button" id="restoreOriginalBtn" class="ghost-btn">還原原文</button></div><p class="hint">AI 只會收到此欄文字。</p></div><div class="full"><button class="primary-btn" type="submit">儲存服務紀錄</button></div></form>`);
+  const s=students.find(x=>x.id===studentId);if(!s)return;let existing={};if(recordId){const snap=await getDoc(doc(db,"records",recordId));existing=snap.exists()?{id:snap.id,...snap.data()}:{};}
+  openModal(`<h2>${recordId?"修改":"新增"}服務紀錄｜${esc(s.name)}</h2><form id="recordForm" class="form-grid"><div class="full"><label>日期</label><input name="date" type="date" class="field date-field" required value="${esc(existing.date||new Date().toISOString().slice(0,10))}"></div><div class="full multi-section"><label>對象（可複選）</label><div class="option-grid">${checkboxOptions("targets",TARGET_OPTIONS,existing.targets||existing.target)}</div></div><div class="full multi-section"><label>方式（可複選）</label><div class="option-grid">${checkboxOptions("methods",METHOD_OPTIONS,normalizedMethods(existing.methods||existing.method))}</div></div><div class="full multi-section"><label>類型（可複選）</label><div class="option-grid">${checkboxOptions("types",SERVICE_TYPE_OPTIONS,existing.types||existing.type)}</div></div><div class="full ai-box"><label>內容摘述</label><textarea id="summaryInput" name="summary" class="field summary-editor" required>${esc(existing.summary||"")}</textarea><div class="ai-actions"><button type="button" id="aiPolishBtn" class="ghost-btn">✨ AI 潤飾內容摘述</button><button type="button" id="restoreOriginalBtn" class="ghost-btn">還原原文</button></div><p class="hint">AI 只會收到此欄文字。</p></div><div class="full"><button class="primary-btn" type="submit">儲存服務紀錄</button></div></form>`);
   let originalText=$("summaryInput").value;
   $("restoreOriginalBtn").onclick=()=>$("summaryInput").value=originalText;
   $("aiPolishBtn").onclick=async()=>{const text=$("summaryInput").value.trim();if(!text)return alert("請先輸入內容摘述。");originalText=text;const btn=$("aiPolishBtn");btn.disabled=true;btn.textContent="AI 潤飾中...";try{const res=await fetch(localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"polish",text})});const data=await res.json();if(!res.ok||data.success===false)throw new Error(data.error||`錯誤 ${res.status}`);$("summaryInput").value=String(data.polished||data.result||data.text||"").trim();toast("AI 潤飾完成");}catch(err){alert("AI 潤飾失敗："+(err.message||err));}finally{btn.disabled=false;btn.textContent="✨ AI 潤飾內容摘述";}};
-  $("recordForm").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);const data={studentId,studentName:s.name,date:fd.get("date"),targets:fd.getAll("targets"),methods:fd.getAll("methods"),types:fd.getAll("types"),summary:fd.get("summary")};if(!data.targets.length||!data.methods.length||!data.types.length)return alert("對象、方式、類型都至少勾選一項。");if(recordId){const before=safeClone(existing);await updateDoc(doc(db,"records",recordId),{...data,updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase()});await writeAudit({action:"update",targetType:"record",targetId:recordId,studentId,studentName:s.name,before,after:data});}else{const ref=await addDoc(collection(db,"records"),{...data,ownerEmail:effectiveOwnerEmail(),createdAt:serverTimestamp(),createdBy:(currentUser.email||"").toLowerCase(),updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),deleted:false});await writeAudit({action:"create",targetType:"record",targetId:ref.id,studentId,studentName:s.name,after:data});}closeModal();toast("服務紀錄已儲存");await loadAll();};
+  $("recordForm").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);const data={studentId,studentName:s.name,date:fd.get("date"),targets:fd.getAll("targets"),methods:fd.getAll("methods"),types:fd.getAll("types"),summary:fd.get("summary")};if(!data.targets.length||!data.methods.length||!data.types.length)return alert("對象、方式、類型都至少勾選一項。");if(recordId){if(!canManageRecord(existing))return alert("你只能修改自己建立的服務紀錄。");const before=safeClone(existing);await updateDoc(doc(db,"records",recordId),{...data,updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),updatedByName:baseActorName()});await writeAudit({action:"update",targetType:"record",targetId:recordId,studentId,studentName:s.name,before,after:data});}else{const ref=await addDoc(collection(db,"records"),{...data,ownerEmail:effectiveOwnerEmail(),createdAt:serverTimestamp(),createdBy:(currentUser.email||"").toLowerCase(),createdByEmail:(currentUser.email||"").toLowerCase(),createdByName:baseActorName(),updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),updatedByName:baseActorName(),deleted:false});await writeAudit({action:"create",targetType:"record",targetId:ref.id,studentId,studentName:s.name,after:data});}closeModal();toast("服務紀錄已儲存");await loadAll();};
 }
 
 async function openStudentRecords(studentId){
   const s=students.find(x=>x.id===studentId);const records=await getStudentRecords(studentId);
-  openModal(`<h2>${esc(s.name)}｜服務紀錄</h2><div class="meta">學號：${esc(s.studentId)}　科系／班級：${esc(s.department||"")}　生理性別：${esc(s.biologicalSex||"")}　年級：${esc(calculatedGrade(s))}<br>學生障別：${esc(displayMulti(s.disabilities||s.issues||[]))||"未填"}${s.studentNote?`<br>備註：${esc(s.studentNote)}`:""}${isAssistant()?`<br><strong>權限說明：僅顯示您自己建立的服務紀錄。</strong>`:""}</div><table class="record-table"><thead><tr><th>次數</th><th>日期</th><th>建立者</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th><th>操作</th></tr></thead><tbody>${records.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.date)}</td><td>${esc(recordCreatorLabel(r))}</td><td>${esc(displayMulti(r.targets||r.target))}</td><td>${esc(displayMulti(r.methods||r.method))}</td><td>${esc(displayMulti(r.types||r.type))}</td><td class="summary-cell">${esc(r.summary)}</td><td><div class="record-actions"><button class="ghost-btn small-btn" data-edit-record="${r.id}">修改</button><button class="danger-btn small-btn" data-delete-record="${r.id}">移至回收桶</button></div></td></tr>`).join("")}</tbody></table><div class="card-actions"><button id="downloadExcelBtn" class="primary-btn">下載服務紀錄表</button><button class="ghost-btn" id="addRecordFromList">新增服務紀錄</button></div>`);
+  openModal(`<h2>${esc(s.name)}｜服務紀錄</h2><div class="meta">學號：${esc(s.studentId)}　科系／班級：${esc(s.department||"")}　生理性別：${esc(s.biologicalSex||"")}　年級：${esc(calculatedGrade(s))}<br>學生障別：${esc(displayMulti(s.disabilities||s.issues||[]))||"未填"}${s.studentNote?`<br>備註：${esc(s.studentNote)}`:""}</div><div class="record-table-wrap"><table class="record-table"><thead><tr><th>次數</th><th>日期</th><th>建立者</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th><th>操作</th></tr></thead><tbody>${records.map((r,i)=>`<tr><td>${i+1}</td><td class="nowrap-cell">${esc(r.date)}</td><td class="nowrap-cell">${esc(creatorDisplayName(r))}</td><td>${esc(displayMulti(r.targets||r.target))}</td><td>${esc(displayMethods(r.methods||r.method))}</td><td>${esc(displayMulti(r.types||r.type))}</td><td class="summary-cell">${esc(r.summary)}</td><td>${canManageRecord(r)?`<div class="record-actions"><button class="ghost-btn small-btn" data-edit-record="${r.id}">修改</button><button class="danger-btn small-btn" data-delete-record="${r.id}">移至回收桶</button></div>`:`<span class="status-pill">僅可查看</span>`}</td></tr>`).join("")}</tbody></table></div><div class="card-actions"><button id="downloadExcelBtn" class="primary-btn">下載服務紀錄表</button><button class="ghost-btn" id="addRecordFromList">新增服務紀錄</button></div>`);
   $("downloadExcelBtn").onclick=()=>exportStudentWorkbook(s,records);$("addRecordFromList").onclick=()=>openRecordForm(studentId);
   document.querySelectorAll("[data-edit-record]").forEach(b=>b.onclick=()=>openRecordForm(studentId,b.dataset.editRecord));
-  document.querySelectorAll("[data-delete-record]").forEach(b=>b.onclick=async()=>{const r=records.find(x=>x.id===b.dataset.deleteRecord);if(!confirm("確定移至回收桶？"))return;await updateDoc(doc(db,"records",r.id),{deleted:true,deletedAt:serverTimestamp(),deletedBy:(currentUser.email||"").toLowerCase()});await writeAudit({action:"delete",targetType:"record",targetId:r.id,studentId,studentName:s.name,before:r});await openStudentRecords(studentId);await loadAll();});
+  document.querySelectorAll("[data-delete-record]").forEach(b=>b.onclick=async()=>{const r=records.find(x=>x.id===b.dataset.deleteRecord);if(!canManageRecord(r))return alert("你只能刪除自己建立的服務紀錄。");if(!confirm("確定移至回收桶？"))return;await updateDoc(doc(db,"records",r.id),{deleted:true,deletedAt:serverTimestamp(),deletedBy:(currentUser.email||"").toLowerCase()});await writeAudit({action:"delete",targetType:"record",targetId:r.id,studentId,studentName:s.name,before:r});await openStudentRecords(studentId);await loadAll();});
 }
 
-async function loadRecentRecords(){recentRecords=[];const snap=await getDocs(recordsQueryForOwner());recentRecords=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.deleted!==true).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);$("recentRecords").innerHTML=recentRecords.length?`<table class="record-table"><thead><tr><th>日期</th><th>學生</th><th>建立者</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th></tr></thead><tbody>${recentRecords.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.studentName)}</td><td>${esc(recordCreatorLabel(r))}</td><td>${esc(displayMulti(r.targets||r.target))}</td><td>${esc(displayMulti(r.methods||r.method))}</td><td>${esc(displayMulti(r.types||r.type))}</td><td class="summary-cell">${esc(r.summary)}</td></tr>`).join("")}</tbody></table>`:'<div class="empty">目前沒有服務紀錄。</div>';}
+async function loadRecentRecords(){
+  recentRecords=[];
+  const constraints=[where("ownerEmail","==",effectiveOwnerEmail())];
+  if(isAssistant())constraints.push(where("createdBy","==",(currentUser.email||"").toLowerCase()));
+  const snap=await getDocs(query(collection(db,"records"),...constraints));
+  recentRecords=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.deleted!==true).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,30);
+  $("recentRecords").innerHTML=recentRecords.length?`<div class="record-table-wrap"><table class="record-table"><thead><tr><th>日期</th><th>學生</th><th>建立者</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th></tr></thead><tbody>${recentRecords.map(r=>`<tr><td class="nowrap-cell">${esc(r.date)}</td><td>${esc(r.studentName)}</td><td class="nowrap-cell">${esc(creatorDisplayName(r))}</td><td>${esc(displayMulti(r.targets||r.target))}</td><td>${esc(displayMethods(r.methods||r.method))}</td><td>${esc(displayMulti(r.types||r.type))}</td><td class="summary-cell">${esc(r.summary)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="empty">目前沒有服務紀錄。</div>';
+}
 
 async function loadAuditLogs(){
   const email=(currentUser.email||"").toLowerCase();
-  const snap=await getDocs(isAssistant()?query(collection(db,"auditLogs"),where("actorEmail","==",actorEmail())):query(collection(db,"auditLogs"),where("ownerEmail","==",effectiveOwnerEmail())));
+  const auditConstraints=[where("ownerEmail","==",effectiveOwnerEmail())];
+  if(isAssistant())auditConstraints.push(where("actorEmail","==",email));
+  const snap=await getDocs(query(collection(db,"auditLogs"),...auditConstraints));
   const logs=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)).slice(0,100);
   const actionMap={create:"新增",update:"修改",delete:"移至回收桶",restore:"還原",transfer:"轉移"};
   const roleMap={teacher:"個管老師",assistant:"小幫手",admin:"系統管理員"};
@@ -248,10 +304,13 @@ async function loadAuditLogs(){
 }
 
 async function loadRecycleBin(){
-  const [ss,rs]=await Promise.all([getDocs(query(collection(db,"students"),where("ownerEmail","==",effectiveOwnerEmail()),where("deleted","==",true))),getDocs(recordsQueryForOwner([where("deleted","==",true)]))]);
+  const recordConstraints=[where("ownerEmail","==",effectiveOwnerEmail()),where("deleted","==",true)];if(isAssistant())recordConstraints.push(where("createdBy","==",(currentUser.email||"").toLowerCase()));const [ss,rs]=await Promise.all([isTeacher()?getDocs(query(collection(db,"students"),where("ownerEmail","==",effectiveOwnerEmail()),where("deleted","==",true))):Promise.resolve({docs:[]}),getDocs(query(collection(db,"records"),...recordConstraints))]);
   const deletedStudents=ss.docs.map(d=>({id:d.id,...d.data()}));const deletedRecords=rs.docs.map(d=>({id:d.id,...d.data()}));
   const items=[...deletedStudents.map(x=>({...x,_type:"student"})),...deletedRecords.map(x=>({...x,_type:"record"}))].sort((a,b)=>(b.deletedAt?.seconds||0)-(a.deletedAt?.seconds||0));
-  $("recycleList").innerHTML=items.length?items.map(x=>`<div class="recycle-item"><div class="recycle-head"><div><strong>${x._type==="student"?"學生":"服務紀錄"}｜${esc(x.name||x.studentName||"")}</strong><div class="audit-meta">刪除者：${esc(x.deletedBy||"")}　${esc(dateText(x.deletedAt))}</div>${x._type==="record"?`<div class="audit-detail">${esc(x.summary||"")}</div>`:""}</div><button class="primary-btn small-btn" data-restore-type="${x._type}" data-restore-id="${x.id}">還原</button></div></div>`).join(""):'<div class="empty">回收桶是空的。</div>';
+  $("recycleList").innerHTML=items.length?items.map(x=>{
+    const canRestore=x._type==="record"||isTeacher();
+    return `<div class="recycle-item"><div class="recycle-head"><div><strong>${x._type==="student"?"學生":"服務紀錄"}｜${esc(x.name||x.studentName||"")}</strong><div class="audit-meta">刪除者：${esc(x.deletedBy||"")}　${esc(dateText(x.deletedAt))}</div>${x._type==="record"?`<div class="audit-detail">${esc(x.summary||"")}</div>`:""}</div>${canRestore?`<button class="primary-btn small-btn" data-restore-type="${x._type}" data-restore-id="${x.id}">還原</button>`:`<span class="status-pill">僅個管老師可還原學生</span>`}</div></div>`;
+  }).join(""):'<div class="empty">回收桶是空的。</div>';
   document.querySelectorAll("[data-restore-id]").forEach(b=>b.onclick=()=>restoreItem(b.dataset.restoreType,b.dataset.restoreId));
 }
 
@@ -260,6 +319,119 @@ async function restoreItem(type,id){
     const snap=await getDoc(doc(db,"students",id));const s={id:snap.id,...snap.data()};const recSnap=await getDocs(query(collection(db,"records"),where("studentId","==",id),where("ownerEmail","==",effectiveOwnerEmail())));const batch=writeBatch(db);batch.update(doc(db,"students",id),{deleted:false,deletedAt:null,deletedBy:null,updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase()});recSnap.docs.forEach(r=>batch.update(r.ref,{deleted:false,deletedAt:null,deletedBy:null}));await batch.commit();await writeAudit({action:"restore",targetType:"student",targetId:id,studentId:id,studentName:s.name,after:s,detail:`學生與 ${recSnap.size} 筆紀錄已還原`});
   }else{const snap=await getDoc(doc(db,"records",id));const r={id:snap.id,...snap.data()};await updateDoc(doc(db,"records",id),{deleted:false,deletedAt:null,deletedBy:null,updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase()});await writeAudit({action:"restore",targetType:"record",targetId:id,studentId:r.studentId,studentName:r.studentName,after:r});}
   toast("資料已還原");await loadAll();
+}
+
+
+function currentSemesterRange(){
+  const now=new Date();
+  const year=now.getFullYear();
+  const month=now.getMonth()+1;
+  if(month>=8){
+    return {start:`${year}-08-01`,end:`${year+1}-01-31`,label:`${year-1911}-1`};
+  }
+  if(month===1){
+    return {start:`${year-1}-08-01`,end:`${year}-01-31`,label:`${year-1912}-1`};
+  }
+  return {start:`${year}-02-01`,end:`${year}-07-31`,label:`${year-1912}-2`};
+}
+
+function currentAcademicYearRange(){
+  const now=new Date();
+  const startYear=now.getMonth()>=7?now.getFullYear():now.getFullYear()-1;
+  return {start:`${startYear}-08-01`,end:`${startYear+1}-07-31`,label:`${startYear-1911}學年度`};
+}
+
+function safeFilename(name){
+  return String(name||"未命名").replace(/[\\/:*?"<>|]/g,"_").replace(/\s+/g," ").trim().slice(0,80)||"未命名";
+}
+
+function recordsByRange(records,range,start,end){
+  if(range==="all")return records;
+  let from=start,to=end;
+  if(range==="semester")({start:from,end:to}=currentSemesterRange());
+  if(range==="academicYear")({start:from,end:to}=currentAcademicYearRange());
+  return records.filter(r=>(!from||r.date>=from)&&(!to||r.date<=to));
+}
+
+function renderBatchDownloadView(){
+  const target=$("batchDownloadList");
+  if(!target)return;
+  const semester=currentSemesterRange();
+  const academicYear=currentAcademicYearRange();
+  target.innerHTML=`
+    <div class="batch-download-controls">
+      <div class="batch-toolbar">
+        <button id="selectAllBatchBtn" class="ghost-btn" type="button">全選</button>
+        <button id="clearAllBatchBtn" class="ghost-btn" type="button">取消全選</button>
+        <span id="batchSelectedCount" class="status-pill">已選 0 位</span>
+      </div>
+      <div class="batch-filter-grid">
+        <div><label>下載範圍</label><select id="batchRange" class="field">
+          <option value="all">全部服務紀錄</option>
+          <option value="semester">本學期（${semester.label}）</option>
+          <option value="academicYear">本學年（${academicYear.label}）</option>
+          <option value="custom">自訂日期</option>
+        </select></div>
+        <div id="batchCustomStartWrap" class="hidden"><label>開始日期</label><input id="batchStartDate" type="date" class="field"></div>
+        <div id="batchCustomEndWrap" class="hidden"><label>結束日期</label><input id="batchEndDate" type="date" class="field"></div>
+      </div>
+      <div id="batchStudentGrid" class="batch-student-grid">${students.length?students.map(s=>`<label class="student-card student-select"><input type="checkbox" name="batchDownloadStudent" value="${s.id}"><span><strong>${esc(s.name)}</strong><br><span class="meta">${esc(s.studentId)}｜${esc(s.department||"")}</span></span></label>`).join(""):'<div class="empty">目前沒有學生資料。</div>'}</div>
+      <div class="batch-download-footer"><button id="startBatchDownloadBtn" class="primary-btn" type="button">📥 開始批次下載</button><div id="batchProgress" class="batch-progress hidden"><div class="progress-track"><div id="batchProgressBar" class="progress-bar"></div></div><div id="batchProgressText" class="hint"></div></div></div>
+    </div>`;
+  const updateCount=()=>{$("batchSelectedCount").textContent=`已選 ${document.querySelectorAll('input[name="batchDownloadStudent"]:checked').length} 位`;};
+  document.querySelectorAll('input[name="batchDownloadStudent"]').forEach(x=>x.addEventListener("change",updateCount));
+  $("selectAllBatchBtn").onclick=()=>{document.querySelectorAll('input[name="batchDownloadStudent"]').forEach(x=>x.checked=true);updateCount();};
+  $("clearAllBatchBtn").onclick=()=>{document.querySelectorAll('input[name="batchDownloadStudent"]').forEach(x=>x.checked=false);updateCount();};
+  $("batchRange").onchange=e=>{const custom=e.target.value==="custom";$("batchCustomStartWrap").classList.toggle("hidden",!custom);$("batchCustomEndWrap").classList.toggle("hidden",!custom);};
+  $("startBatchDownloadBtn").onclick=startBatchDownload;
+}
+
+async function startBatchDownload(){
+  const ids=[...document.querySelectorAll('input[name="batchDownloadStudent"]:checked')].map(x=>x.value);
+  if(!ids.length)return alert("請至少選擇一位學生。");
+  if(typeof JSZip==="undefined")return alert("ZIP 元件尚未載入，請重新整理頁面後再試。");
+  const range=$("batchRange").value;
+  const start=$("batchStartDate")?.value||"";
+  const end=$("batchEndDate")?.value||"";
+  if(range==="custom"&&(!start||!end))return alert("請完整選擇開始日期與結束日期。");
+  if(range==="custom"&&start>end)return alert("開始日期不能晚於結束日期。");
+
+  const btn=$("startBatchDownloadBtn");
+  const progress=$("batchProgress");
+  const bar=$("batchProgressBar");
+  const text=$("batchProgressText");
+  btn.disabled=true;progress.classList.remove("hidden");bar.style.width="0%";
+  try{
+    const zip=new JSZip();
+    const usedNames=new Map();
+    const summary=[];
+    for(let i=0;i<ids.length;i++){
+      const student=students.find(s=>s.id===ids[i]);
+      text.textContent=`正在產生 ${student?.name||"學生"} 的服務紀錄…（${i+1} / ${ids.length}）`;
+      const allRecords=await getStudentRecords(ids[i]);
+      const filtered=recordsByRange(allRecords,range,start,end);
+      const buffer=await exportStudentWorkbook(student,filtered,{download:false});
+      const base=safeFilename(`${student.name}_${student.studentId||""}_服務紀錄表`);
+      const count=(usedNames.get(base)||0)+1;usedNames.set(base,count);
+      const filename=`${base}${count>1?`_${count}`:""}.xlsx`;
+      zip.file(filename,buffer);
+      summary.push(`${student.name}（${student.studentId||"無學號"}）：${filtered.length} 筆`);
+      bar.style.width=`${Math.round((i+1)/ids.length*85)}%`;
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    let rangeLabel="全部紀錄";
+    if(range==="semester")rangeLabel=currentSemesterRange().label;
+    if(range==="academicYear")rangeLabel=currentAcademicYearRange().label;
+    if(range==="custom")rangeLabel=`${start}_${end}`;
+    zip.file("批次下載清單.txt",`明新科技大學 學務處健康與諮商中心資源教室\n學生服務紀錄批次下載\n\n下載範圍：${rangeLabel}\n下載日期：${new Date().toLocaleDateString("zh-TW")}\n學生人數：${ids.length}\n\n${summary.join("\n")}`);
+    text.textContent="正在壓縮 ZIP 檔案…";
+    const blob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:6}},meta=>{bar.style.width=`${85+Math.round(meta.percent*.15)}%`;});
+    const d=new Date();const ymd=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+    const link=document.createElement("a");link.href=URL.createObjectURL(blob);link.download=safeFilename(`服務紀錄_${rangeLabel}_${ymd}`)+".zip";link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+    bar.style.width="100%";text.textContent=`完成：已下載 ${ids.length} 位學生的服務紀錄。`;
+    toast(`已完成 ${ids.length} 位學生的批次下載`);
+  }catch(err){console.error("Batch export failed",err);alert("批次下載失敗："+(err.message||err));text.textContent="批次下載失敗，請稍後再試。";}
+  finally{btn.disabled=false;}
 }
 
 function renderTransferView(){
@@ -289,7 +461,7 @@ function renderMigrationBox(){
 
 async function migrateLegacyData(){
   const status=$("migrationStatus");status.textContent="檢查中…";
-  try{const legacyStudents=await getDocs(collection(db,"teachers",currentUser.uid,"students"));if(legacyStudents.empty){status.textContent="沒有找到舊版資料。";return;}let studentCount=0,recordCount=0;for(const oldStudent of legacyStudents.docs){const old=oldStudent.data();const newRef=doc(db,"students",oldStudent.id);const existing=await getDoc(newRef);if(!existing.exists())await setDoc(newRef,{...old,ownerEmail:effectiveOwnerEmail(),createdBy:(currentUser.email||"").toLowerCase(),updatedBy:(currentUser.email||"").toLowerCase(),deleted:false,migratedFrom:`teachers/${currentUser.uid}/students/${oldStudent.id}`,migratedAt:serverTimestamp()});studentCount++;const oldRecords=await getDocs(collection(db,"teachers",currentUser.uid,"students",oldStudent.id,"records"));for(const oldRecord of oldRecords.docs){const newRecordRef=doc(db,"records",oldRecord.id);const exists=await getDoc(newRecordRef);if(!exists.exists())await setDoc(newRecordRef,{...oldRecord.data(),studentId:oldStudent.id,studentName:old.name||oldRecord.data().studentName||"",ownerEmail:effectiveOwnerEmail(),createdBy:(currentUser.email||"").toLowerCase(),updatedBy:(currentUser.email||"").toLowerCase(),deleted:false,migratedAt:serverTimestamp()});recordCount++;}}
+  try{const legacyStudents=await getDocs(collection(db,"teachers",currentUser.uid,"students"));if(legacyStudents.empty){status.textContent="沒有找到舊版資料。";return;}let studentCount=0,recordCount=0;for(const oldStudent of legacyStudents.docs){const old=oldStudent.data();const newRef=doc(db,"students",oldStudent.id);const existing=await getDoc(newRef);if(!existing.exists())await setDoc(newRef,{...old,ownerEmail:effectiveOwnerEmail(),createdBy:(currentUser.email||"").toLowerCase(),updatedBy:(currentUser.email||"").toLowerCase(),deleted:false,migratedFrom:`teachers/${currentUser.uid}/students/${oldStudent.id}`,migratedAt:serverTimestamp()});studentCount++;const oldRecords=await getDocs(collection(db,"teachers",currentUser.uid,"students",oldStudent.id,"records"));for(const oldRecord of oldRecords.docs){const newRecordRef=doc(db,"records",oldRecord.id);const exists=await getDoc(newRecordRef);if(!exists.exists())await setDoc(newRecordRef,{...oldRecord.data(),studentId:oldStudent.id,studentName:old.name||oldRecord.data().studentName||"",ownerEmail:effectiveOwnerEmail(),createdBy:(currentUser.email||"").toLowerCase(),createdByEmail:(currentUser.email||"").toLowerCase(),createdByName:baseActorName(),updatedBy:(currentUser.email||"").toLowerCase(),updatedByName:baseActorName(),deleted:false,migratedAt:serverTimestamp()});recordCount++;}}
     await writeAudit({action:"create",targetType:"migration",targetId:currentUser.uid,detail:`移轉 ${studentCount} 位學生、${recordCount} 筆服務紀錄`});status.className="success";status.textContent=`完成：${studentCount} 位學生、${recordCount} 筆服務紀錄。舊資料仍保留。`;await loadAll();
   }catch(err){console.error(err);status.className="danger-note";status.textContent="移轉失敗："+(err.message||err);}
 }
@@ -307,7 +479,7 @@ function estimateExcelTextLines(text, capacity=40){
   }, 0);
 }
 
-async function exportStudentWorkbook(student, records){
+async function exportStudentWorkbook(student, records,{download=true}={}){
   try{
     const wb = new ExcelJS.Workbook();
     wb.creator = "MUST Resource Center";
@@ -612,13 +784,15 @@ async function exportStudentWorkbook(student, records){
     ws.printArea=`A1:AD${outputRow-1}`;
 
     const buffer=await wb.xlsx.writeBuffer();
+    if(!download)return buffer;
     const link=document.createElement("a");
     link.href=URL.createObjectURL(new Blob([buffer],{
       type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     }));
-    link.download=`${student.name}_服務紀錄表.xlsx`;
+    link.download=`${safeFilename(student.name)}_服務紀錄表.xlsx`;
     link.click();
-    URL.revokeObjectURL(link.href);
+    setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+    return buffer;
   }catch(err){
     console.error("Export failed",err);
     alert(`服務紀錄表產生失敗（${SERVICE_RECORD_BUILD}）：` + (err.message || err));
@@ -627,12 +801,13 @@ async function exportStudentWorkbook(student, records){
 
 
 function switchView(view){
+  if(!isTeacher() && ["settings","transfer"].includes(view)) view="students";
   document.querySelectorAll(".view").forEach(v=>v.classList.add("hidden"));
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",transfer:"批次轉移",settings:"系統設定"}[view]||"";
-  if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="transfer"&&isTeacher())renderTransferView();
+  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",transfer:"批次轉移",settings:"系統設定"}[view]||"";
+  if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="transfer"&&isTeacher())renderTransferView();
 }
 function openModal(html){$("modalContent").innerHTML=html;$("modal").classList.remove("hidden");}
 function closeModal(){$("modal").classList.add("hidden");$("modalContent").innerHTML="";}
