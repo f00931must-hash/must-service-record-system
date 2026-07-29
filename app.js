@@ -596,9 +596,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
 
     merge(6,1,4,"備註");
     merge(6,5,30,student.studentNote || "");
-    merge(7,1,30,"");
-
-    styleArea(3,1,7,30,{size:11});
+        styleArea(3,1,6,30,{size:11});
     ["A3","L3","A4","L4","A5","A6"].forEach(addr=>{
       ws.getCell(addr).font={name:"標楷體",size:11,bold:true};
       ws.getCell(addr).alignment={
@@ -626,11 +624,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
         displayMulti(student.disabilities || student.issues || []), 70
       ) * 15)
     );
-    ws.getRow(7).height=Math.max(
-      23,
-      Math.min(85, 14 + estimateExcelTextLines(student.studentNote || "",70) * 15)
-    );
-
+    
     // 服務類型統計
     const typeCounts={};
     records.forEach(r=>{
@@ -643,21 +637,21 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       .map(([name,count])=>`${name}：${count} 次`)
       .join("　");
 
-    merge(8,1,7,"服務類型統計");
-    merge(8,8,30,typeText);
-    styleArea(8,1,8,30,{size:11});
-    ws.getCell("A8").font={name:"標楷體",size:11,bold:true};
-    ws.getCell("A8").alignment={horizontal:"center",vertical:"middle",wrapText:false};
-    ws.getCell("H8").alignment={horizontal:"left",vertical:"middle",wrapText:true};
-    ws.getRow(8).height=Math.max(
+    merge(7,1,7,"服務類型統計");
+    merge(7,8,30,typeText);
+    styleArea(7,1,7,30,{size:11});
+    ws.getCell("A7").font={name:"標楷體",size:11,bold:true};
+    ws.getCell("A7").alignment={horizontal:"center",vertical:"middle",wrapText:false};
+    ws.getCell("H7").alignment={horizontal:"left",vertical:"middle",wrapText:true};
+    ws.getRow(7).height=Math.max(
       26,
       Math.min(60, 14 + estimateExcelTextLines(typeText,60) * 15)
     );
 
     // 二、服務紀錄
-    merge(9,1,30,"二、服務紀錄");
-    styleArea(9,1,9,30,{size:13,bold:true,horizontal:"left",wrap:false});
-    ws.getRow(9).height=22;
+    merge(8,1,30,"二、服務紀錄");
+    styleArea(8,1,8,30,{size:13,bold:true,horizontal:"left",wrap:false});
+    ws.getRow(8).height=22;
 
     /*
       服務紀錄欄位重新分配：
@@ -669,19 +663,19 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       內容摘述 S:AD（12欄）
       配合整體欄寬加大，內容摘述可容納更多文字，減少列高與頁數。
     */
-    merge(10,1,2,"次數");
-    merge(10,3,5,"日期");
-    merge(10,6,9,"對象");
-    merge(10,10,13,"方式");
-    merge(10,14,18,"類型");
-    merge(10,19,30,"內容摘述");
-    styleArea(10,1,10,30,{
+    merge(9,1,2,"次數");
+    merge(9,3,5,"日期");
+    merge(9,6,9,"對象");
+    merge(9,10,13,"方式");
+    merge(9,14,18,"類型");
+    merge(9,19,30,"內容摘述");
+    styleArea(9,1,9,30,{
       size:11,
       bold:true,
       fill:"FFE7E6E6",
       wrap:false
     });
-    ws.getRow(10).height=23;
+    ws.getRow(9).height=23;
 
     /*
       內容摘述的列高依實際文字量精準估算：
@@ -689,7 +683,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       - 每行只保留少量安全空間，避免列高過度放大。
       - 超過 Excel 單列安全高度時才拆成續列。
     */
-    let outputRow = 11;
+    let outputRow = 10;
 
     records.forEach((r,recordIndex)=>{
       const targets=displayMulti(r.targets || r.target);
@@ -764,10 +758,10 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
         const methodLines=partIndex===0 ? Math.max(asArray(r.methods || r.method).length,estimateExcelTextLines(methodsExcel,16)) : 1;
         const typeLines=partIndex===0 ? Math.max(asArray(r.types || r.type).length,estimateExcelTextLines(typesExcel,20)) : 1;
         const requiredLines=Math.max(summaryLines,targetLines,methodLines,typeLines);
-        const calculatedHeight=10 + requiredLines*15.8;
+        const calculatedHeight=18 + requiredLines*20;
         ws.getRow(row).height=Math.max(
           35,
-          Math.min(390, calculatedHeight)
+          Math.min(409, calculatedHeight)
         );
       });
 
@@ -775,7 +769,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
     });
 
     // 至少保留八筆紀錄的空白列外觀。
-    const minimumEndRow=18;
+    const minimumEndRow=17;
     while(outputRow<=minimumEndRow){
       ws.mergeCells(outputRow,1,outputRow,2);
       ws.mergeCells(outputRow,3,outputRow,5);
@@ -783,14 +777,14 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       ws.mergeCells(outputRow,10,outputRow,13);
       ws.mergeCells(outputRow,14,outputRow,18);
       ws.mergeCells(outputRow,19,outputRow,30);
-      ws.getCell(outputRow,1).value=outputRow-10;
+      ws.getCell(outputRow,1).value=outputRow-9;
       styleArea(outputRow,1,outputRow,30,{size:10.5,vertical:"middle"});
       ws.getRow(outputRow).height=32;
       outputRow++;
     }
 
     ws.views=[{showGridLines:false}];
-    ws.pageSetup.printTitlesRow="10:10";
+    ws.pageSetup.printTitlesRow="9:9;
     ws.pageSetup.horizontalCentered=true;
     ws.printArea=`A1:AD${outputRow-1}`;
 
