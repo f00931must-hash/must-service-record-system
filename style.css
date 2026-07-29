@@ -118,3 +118,5 @@ label{font-weight:700;display:block;margin-bottom:5px}
 .record-table th:nth-child(3){white-space:nowrap;min-width:105px}
 .record-table th:nth-child(4),.record-table th:nth-child(5),.record-table th:nth-child(6){min-width:120px}
 .record-table th:last-child{white-space:nowrap;min-width:145px}
+
+.suffix-field{display:flex;align-items:center;gap:10px}.suffix-field .field{flex:1}.suffix-field span{font-weight:700;white-space:nowrap}
