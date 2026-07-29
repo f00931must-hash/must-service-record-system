@@ -1,4 +1,4 @@
-# MUST Service Record v1.3.0 測試版
+# MUST Service Record v1.3.1 Word 匯出修正版
 
 本版新增部別、科系固定「系」字、班級欄位，以及學制／系級自動組合。
 

@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.3.0-student-program-class";
+const SERVICE_RECORD_BUILD = "v1.3.1-word-export-fix";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -596,7 +596,8 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
 
     merge(6,1,4,"備註");
     merge(6,5,30,student.studentNote || "");
-        styleArea(3,1,6,30,{size:11});
+
+    styleArea(3,1,6,30,{size:11});
     ["A3","L3","A4","L4","A5","A6"].forEach(addr=>{
       ws.getCell(addr).font={name:"標楷體",size:11,bold:true};
       ws.getCell(addr).alignment={
@@ -617,14 +618,17 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
 
     ws.getRow(3).height=23;
     ws.getRow(4).height=23;
-    ws.getRow(5).height=23;
-    ws.getRow(6).height=Math.max(
+    ws.getRow(5).height=Math.max(
       23,
       Math.min(55, 14 + estimateExcelTextLines(
         displayMulti(student.disabilities || student.issues || []), 70
       ) * 15)
     );
-    
+    ws.getRow(6).height=Math.max(
+      23,
+      Math.min(85, 14 + estimateExcelTextLines(student.studentNote || "",70) * 15)
+    );
+
     // 服務類型統計
     const typeCounts={};
     records.forEach(r=>{
@@ -758,7 +762,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
         const methodLines=partIndex===0 ? Math.max(asArray(r.methods || r.method).length,estimateExcelTextLines(methodsExcel,16)) : 1;
         const typeLines=partIndex===0 ? Math.max(asArray(r.types || r.type).length,estimateExcelTextLines(typesExcel,20)) : 1;
         const requiredLines=Math.max(summaryLines,targetLines,methodLines,typeLines);
-        const calculatedHeight=18 + requiredLines*20;
+        const calculatedHeight=14 + requiredLines*20;
         ws.getRow(row).height=Math.max(
           35,
           Math.min(409, calculatedHeight)
@@ -784,7 +788,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
     }
 
     ws.views=[{showGridLines:false}];
-    ws.pageSetup.printTitlesRow="9:9;
+    ws.pageSetup.printTitlesRow="9:9";
     ws.pageSetup.horizontalCentered=true;
     ws.printArea=`A1:AD${outputRow-1}`;
 
