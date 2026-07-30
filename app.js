@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.3.1-word-export-fix";
+const SERVICE_RECORD_BUILD = "v1.3.2-modal-selection-fix";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -183,7 +183,14 @@ $("addStudentBtn").onclick=()=>openStudentForm();
 $("studentSearch").oninput=renderStudents;
 $("saveSettingsBtn").onclick=()=>{const endpoint=$("aiEndpoint").value.trim()||DEFAULT_AI_ENDPOINT;localStorage.setItem("service_ai_endpoint",endpoint);$("aiEndpoint").value=endpoint;toast("AI 安全代理網址已儲存");};
 document.querySelectorAll(".nav").forEach(btn=>btn.onclick=()=>switchView(btn.dataset.view));
-$("modal").onclick=e=>{if(e.target===$("modal"))closeModal();};
+let modalPointerStartedOnBackdrop=false;
+$("modal").addEventListener("pointerdown",e=>{modalPointerStartedOnBackdrop=e.target===$("modal");});
+$("modal").addEventListener("pointercancel",()=>{modalPointerStartedOnBackdrop=false;});
+$("modal").addEventListener("click",e=>{
+  const shouldClose=modalPointerStartedOnBackdrop&&e.target===$("modal");
+  modalPointerStartedOnBackdrop=false;
+  if(shouldClose)closeModal();
+});
 getRedirectResult(auth).catch(err=>console.error("Google redirect result failed",err));
 
 onAuthStateChanged(auth,async user=>{
