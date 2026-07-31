@@ -15,7 +15,7 @@
       <div class="logo">M</div>
       <h1>資源教室服務紀錄系統</h1>
       <p>個管老師與小幫手的學生服務紀錄管理</p>
-      <div class="hint">版本 v1.3.2｜視窗誤關閉修正版</div>
+      <div class="hint">版本 v1.4.0｜學期管理版</div>
       <button id="loginBtn" class="primary-btn">使用 Google 帳號登入</button>
       <a href="../" class="back-link">回入口網站</a>
     </div>
@@ -47,7 +47,7 @@
       <section id="view-records" class="view hidden"><div class="panel"><h2>最近服務紀錄</h2><div id="recentRecords"></div></div></section>
       <section id="view-history" class="view hidden"><div class="panel"><h2>操作紀錄</h2><p class="hint">顯示個管老師與所屬協作者的新增、修改、刪除、還原與轉移操作。</p><div id="auditList"></div></div></section>
       <section id="view-recycle" class="view hidden"><div class="panel"><h2>我的回收桶</h2><p class="hint">刪除不會真正消失；個管老師可自行還原。小幫手可查看自己協助刪除的服務紀錄，但不能刪除學生。</p><div id="recycleList"></div></div></section>
-      <section id="view-batchDownload" class="view hidden"><div class="panel"><h2>批次下載服務紀錄</h2><p class="hint">個管老師與小幫手皆可勾選多位學生，依全部、本學期、本學年或自訂日期下載。每位學生會產生一份 Excel，並自動打包成 ZIP。</p><div id="batchDownloadList"></div></div></section>
+      <section id="view-batchDownload" class="view hidden"><div class="panel"><h2>批次下載服務紀錄</h2><p class="hint">個管老師與小幫手皆可勾選多位學生，依指定學期、全部或自訂日期下載。每位學生會產生一份 Excel，並自動打包成 ZIP。</p><div id="batchDownloadList"></div></div></section>
       <section id="view-transfer" class="view hidden"><div class="panel"><h2>批次轉移學生</h2><p class="hint">勾選學生後轉交給另一位個管老師。學生及其服務紀錄會一併移交，歷史建立者不會改寫。</p><div id="transferList"></div></div></section>
       <section id="view-settings" class="view hidden teacher-only"><div class="panel"><h2>系統設定</h2><p class="hint">AI 只會處理「內容摘述」，不會傳送學生姓名、學號或其他基本資料。</p><label>AI 安全代理網址</label><input id="aiEndpoint" class="field" value="https://must-resource-ai.f00931-must.workers.dev/ai/polish"><button id="saveSettingsBtn" class="primary-btn">儲存設定</button><div id="migrationBox" class="migration-box teacher-only"></div></div></section>
     </main>

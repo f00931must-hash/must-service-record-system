@@ -1,0 +1,13 @@
+MUST 服務紀錄系統 v1.2.0 RC 更新順序
+
+1. 先備份目前 GitHub Repository 與 Firebase Firestore Rules。
+2. 將本資料夾內的網站檔案全部上傳至服務紀錄系統 GitHub Repository，覆蓋舊版。
+3. 等候 GitHub Pages 更新約 1～3 分鐘後，以 Ctrl + F5 強制重新整理。
+4. 進入服務紀錄系統使用的 Firebase Console：Firestore Database → Rules。
+5. 將本資料夾 firestore.rules 的完整內容貼上並按「發布」。
+6. 以個管老師帳號測試：可看全部紀錄、可看小幫手紀錄、建立者顯示姓名。
+7. 以小幫手帳號測試：只能看到、修改、刪除自己建立的紀錄；看不到老師及其他小幫手紀錄。
+8. 測試學生年級：每年 8 月 1 日自動升一級，畫面顯示「一甲、二乙」等，不再顯示「大」。
+9. 測試新增服務紀錄：「活動／會議」及「活動參與」選項是否正常。
+
+注意：Firestore Rules 一定要發布，不能只更新 GitHub Pages。
