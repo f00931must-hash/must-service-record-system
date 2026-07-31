@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.4.0-semester-management";
+const SERVICE_RECORD_BUILD = "v1.4.1-semester-download-fix";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -286,7 +286,7 @@ async function getStudentRecords(studentId,{includeDeleted=false}={}){
 
 async function openRecordForm(studentId,recordId=""){
   const s=students.find(x=>x.id===studentId);if(!s)return;let existing={};if(recordId){const snap=await getDoc(doc(db,"records",recordId));existing=snap.exists()?{id:snap.id,...snap.data()}:{};}
-  const recordDate=existing.date||new Date().toISOString().slice(0,10);const semesterInfo=existing.academicYear&&existing.semester?normalizedSemesterInfo(existing):semesterInfoFromDate(recordDate);
+  const recordDate=existing.date||todayLocalIso();const semesterInfo=existing.academicYear&&existing.semester?normalizedSemesterInfo(existing):semesterInfoFromDate(recordDate);
   openModal(`<h2>${recordId?"修改":"新增"}服務紀錄｜${esc(s.name)}</h2><form id="recordForm" class="form-grid"><div><label>日期</label><input id="recordDateInput" name="date" type="date" class="field date-field" required value="${esc(recordDate)}"></div><div class="semester-fields"><div><label>學年度</label><select id="recordAcademicYear" name="academicYear" class="field">${academicYearOptions(semesterInfo.academicYear)}</select></div><div><label>學期</label><select id="recordSemester" name="semester" class="field"><option value="1" ${semesterInfo.semester===1?"selected":""}>第一學期</option><option value="2" ${semesterInfo.semester===2?"selected":""}>第二學期</option></select></div></div><div class="full multi-section"><label>對象（可複選）</label><div class="option-grid">${checkboxOptions("targets",TARGET_OPTIONS,existing.targets||existing.target)}</div></div><div class="full multi-section"><label>方式（可複選）</label><div class="option-grid">${checkboxOptions("methods",METHOD_OPTIONS,normalizedMethods(existing.methods||existing.method))}</div></div><div class="full multi-section"><label>類型（可複選）</label><div class="option-grid">${checkboxOptions("types",SERVICE_TYPE_OPTIONS,existing.types||existing.type)}</div></div><div class="full ai-box"><label>內容摘述</label><textarea id="summaryInput" name="summary" class="field summary-editor" required>${esc(existing.summary||"")}</textarea><div class="ai-actions"><button type="button" id="aiPolishBtn" class="ghost-btn">✨ AI 潤飾內容摘述</button><button type="button" id="restoreOriginalBtn" class="ghost-btn">還原原文</button></div><p class="hint">AI 只會收到此欄文字。</p></div><div class="full"><button class="primary-btn" type="submit">儲存服務紀錄</button></div></form>`);
   $("recordDateInput")?.addEventListener("change",e=>{const info=semesterInfoFromDate(e.target.value);$("recordAcademicYear").value=String(info.academicYear);$("recordSemester").value=String(info.semester);});
   let originalText=$("summaryInput").value;
@@ -298,11 +298,16 @@ async function openRecordForm(studentId,recordId=""){
 async function openStudentRecords(studentId){
   const s=students.find(x=>x.id===studentId);const records=await getStudentRecords(studentId);
   const groups=new Map();records.forEach(r=>{const info=normalizedSemesterInfo(r);if(!groups.has(info.key))groups.set(info.key,{...info,records:[]});groups.get(info.key).records.push(r);});
-  const currentKey=semesterInfoFromDate(new Date().toISOString().slice(0,10)).key;
   const sortedGroups=[...groups.values()].sort((a,b)=>{if(a.key==="unclassified")return 1;if(b.key==="unclassified")return -1;return (b.academicYear-a.academicYear)||(b.semester-a.semester);});
-  const groupHtml=sortedGroups.length?sortedGroups.map((g,index)=>{const open=g.key===currentKey||(!sortedGroups.some(x=>x.key===currentKey)&&index===0);return `<details class="semester-group" ${open?"open":""}><summary><span>${esc(g.label)}</span><span class="semester-count">${g.records.length} 筆</span></summary><div class="record-table-wrap"><table class="record-table"><thead><tr><th>次數</th><th>日期</th><th>建立者</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th><th>操作</th></tr></thead><tbody>${g.records.map((r,i)=>`<tr><td>${i+1}</td><td class="nowrap-cell">${esc(r.date)}</td><td class="nowrap-cell">${esc(creatorDisplayName(r))}</td><td>${esc(displayMulti(r.targets||r.target))}</td><td>${esc(displayMethods(r.methods||r.method))}</td><td>${esc(displayMulti(r.types||r.type))}</td><td class="summary-cell">${esc(r.summary)}</td><td>${canManageRecord(r)?`<div class="record-actions"><button class="ghost-btn small-btn" data-edit-record="${r.id}">修改</button><button class="danger-btn small-btn" data-delete-record="${r.id}">移至回收桶</button></div>`:`<span class="status-pill">僅可查看</span>`}</td></tr>`).join("")}</tbody></table></div></details>`;}).join(""):'<div class="empty">目前沒有服務紀錄。</div>';
-  openModal(`<h2>${esc(s.name)}｜服務紀錄</h2><div class="meta">學號：${esc(s.studentId)}　學制／系級：${esc(programClassDisplay(s))}　生理性別：${esc(s.biologicalSex||"")}<br>學生障別：${esc(displayMulti(s.disabilities||s.issues||[]))||"未填"}${s.studentNote?`<br>備註：${esc(s.studentNote)}`:""}</div><div class="semester-groups">${groupHtml}</div><div class="card-actions"><button id="downloadExcelBtn" class="primary-btn">下載全部服務紀錄表</button><button class="ghost-btn" id="addRecordFromList">新增服務紀錄</button></div>`);
-  $("downloadExcelBtn").onclick=()=>exportStudentWorkbook(s,records);$("addRecordFromList").onclick=()=>openRecordForm(studentId);
+  const groupHtml=sortedGroups.length?sortedGroups.map((g,index)=>{const open=index===0;return `<details class="semester-group" ${open?"open":""} data-semester-group="${esc(g.key)}"><summary><label class="semester-select" title="勾選要下載的學期" onclick="event.stopPropagation()"><input type="checkbox" data-semester-select="${esc(g.key)}" ${index===0?"checked":""}><span class="semester-checkmark"></span></label><span class="semester-title">${esc(g.label)}</span><span class="semester-count">${g.records.length} 筆</span></summary><div class="record-table-wrap"><table class="record-table"><thead><tr><th>次數</th><th>日期</th><th>建立者</th><th>對象</th><th>方式</th><th>類型</th><th>內容摘述</th><th>操作</th></tr></thead><tbody>${g.records.map((r,i)=>`<tr><td>${i+1}</td><td class="nowrap-cell">${esc(r.date)}</td><td class="nowrap-cell">${esc(creatorDisplayName(r))}</td><td>${esc(displayMulti(r.targets||r.target))}</td><td>${esc(displayMethods(r.methods||r.method))}</td><td>${esc(displayMulti(r.types||r.type))}</td><td class="summary-cell">${esc(r.summary)}</td><td>${canManageRecord(r)?`<div class="record-actions"><button class="ghost-btn small-btn" data-edit-record="${r.id}">修改</button><button class="danger-btn small-btn" data-delete-record="${r.id}">移至回收桶</button></div>`:`<span class="status-pill">僅可查看</span>`}</td></tr>`).join("")}</tbody></table></div></details>`;}).join(""):'<div class="empty">目前沒有服務紀錄。</div>';
+  openModal(`<h2>${esc(s.name)}｜服務紀錄</h2><div class="meta">學號：${esc(s.studentId)}　學制／系級：${esc(programClassDisplay(s))}　生理性別：${esc(s.biologicalSex||"")}<br>學生障別：${esc(displayMulti(s.disabilities||s.issues||[]))||"未填"}${s.studentNote?`<br>備註：${esc(s.studentNote)}`:""}</div><div class="semester-download-hint">請勾選要下載的學期；已預設勾選最新學期。</div><div class="semester-groups">${groupHtml}</div><div class="card-actions"><button id="downloadExcelBtn" class="primary-btn">下載勾選學期服務紀錄表</button><button class="ghost-btn" id="addRecordFromList">新增服務紀錄</button></div>`);
+  $("downloadExcelBtn").onclick=()=>{
+    const selectedKeys=[...document.querySelectorAll("[data-semester-select]:checked")].map(x=>x.dataset.semesterSelect);
+    if(!selectedKeys.length)return alert("請至少勾選一個學期。 ");
+    const selectedRecords=records.filter(r=>selectedKeys.includes(normalizedSemesterInfo(r).key));
+    exportStudentWorkbook(s,selectedRecords);
+  };
+  $("addRecordFromList").onclick=()=>openRecordForm(studentId);
   document.querySelectorAll("[data-edit-record]").forEach(b=>b.onclick=()=>openRecordForm(studentId,b.dataset.editRecord));
   document.querySelectorAll("[data-delete-record]").forEach(b=>b.onclick=async()=>{const r=records.find(x=>x.id===b.dataset.deleteRecord);if(!canManageRecord(r))return alert("你只能刪除自己建立的服務紀錄。");if(!confirm("確定移至回收桶？"))return;await updateDoc(doc(db,"records",r.id),{deleted:true,deletedAt:serverTimestamp(),deletedBy:(currentUser.email||"").toLowerCase()});await writeAudit({action:"delete",targetType:"record",targetId:r.id,studentId,studentName:s.name,before:r});await openStudentRecords(studentId);await loadAll();});
 }
@@ -351,6 +356,14 @@ async function restoreItem(type,id){
 
 
 
+function todayLocalIso(){
+  const now=new Date();
+  const y=now.getFullYear();
+  const m=String(now.getMonth()+1).padStart(2,"0");
+  const d=String(now.getDate()).padStart(2,"0");
+  return `${y}-${m}-${d}`;
+}
+
 function semesterInfoFromDate(dateValue){
   const value=String(dateValue||"");
   const match=value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -358,7 +371,7 @@ function semesterInfoFromDate(dateValue){
   const year=d.getFullYear();
   const month=d.getMonth()+1;
   if(month>=8) return {academicYear:year-1911,semester:1,label:`${year-1911} 第一學期`,key:`${year-1911}-1`};
-  if(month===1) return {academicYear:year-1912,semester:1,label:`${year-1912} 第一學期`,key:`${year-1912}-1`};
+  if(month<=2) return {academicYear:year-1912,semester:1,label:`${year-1912} 第一學期`,key:`${year-1912}-1`};
   return {academicYear:year-1912,semester:2,label:`${year-1912} 第二學期`,key:`${year-1912}-2`};
 }
 function normalizedSemesterInfo(record){
@@ -369,7 +382,7 @@ function normalizedSemesterInfo(record){
   return {academicYear:null,semester:null,label:"未分類",key:"unclassified"};
 }
 function academicYearOptions(selected){
-  const current=semesterInfoFromDate(new Date().toISOString().slice(0,10)).academicYear;
+  const current=semesterInfoFromDate(todayLocalIso()).academicYear;
   const years=[];for(let y=current+1;y>=current-6;y--)years.push(y);
   if(selected&&!years.includes(Number(selected)))years.push(Number(selected));
   return years.sort((a,b)=>b-a).map(y=>`<option value="${y}" ${Number(selected)===y?"selected":""}>${y}</option>`).join("");
@@ -421,8 +434,8 @@ function renderBatchDownloadView(){
       </div>
       <div class="batch-filter-grid">
         <div><label>下載範圍</label><select id="batchRange" class="field"><option value="semester">指定學期</option><option value="all">全部服務紀錄</option><option value="custom">自訂日期</option></select></div>
-        <div id="batchAcademicYearWrap"><label>學年度</label><select id="batchAcademicYear" class="field">${academicYearOptions(semesterInfoFromDate(new Date().toISOString().slice(0,10)).academicYear)}</select></div>
-        <div id="batchSemesterWrap"><label>學期</label><select id="batchSemester" class="field"><option value="1" ${semesterInfoFromDate(new Date().toISOString().slice(0,10)).semester===1?"selected":""}>第一學期</option><option value="2" ${semesterInfoFromDate(new Date().toISOString().slice(0,10)).semester===2?"selected":""}>第二學期</option></select></div>
+        <div id="batchAcademicYearWrap"><label>學年度</label><select id="batchAcademicYear" class="field">${academicYearOptions(semesterInfoFromDate(todayLocalIso()).academicYear)}</select></div>
+        <div id="batchSemesterWrap"><label>學期</label><select id="batchSemester" class="field"><option value="1" ${semesterInfoFromDate(todayLocalIso()).semester===1?"selected":""}>第一學期</option><option value="2" ${semesterInfoFromDate(todayLocalIso()).semester===2?"selected":""}>第二學期</option></select></div>
         <div id="batchCustomStartWrap" class="hidden"><label>開始日期</label><input id="batchStartDate" type="date" class="field"></div>
         <div id="batchCustomEndWrap" class="hidden"><label>結束日期</label><input id="batchEndDate" type="date" class="field"></div>
       </div>
@@ -629,19 +642,18 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
 
     const semesterSet=[...new Set(records.map(r=>normalizedSemesterInfo(r).key))];
     const exportSemester=semesterSet.length===1?normalizedSemesterInfo(records[0]||{}):null;
-    merge(5,1,4,"學年度");
-    merge(5,5,11,exportSemester?.academicYear||"多學期");
-    merge(5,12,15,"學期");
-    merge(5,16,30,exportSemester?semesterLabel(exportSemester.semester):"多學期");
+    const semesterText=exportSemester?`${exportSemester.academicYear}-${exportSemester.semester}`:"多學期";
 
-    merge(6,1,4,"學生障別");
-    merge(6,5,30,displayMulti(student.disabilities || student.issues || []) || "未填");
+    merge(5,1,4,"學生障別");
+    merge(5,5,11,displayMulti(student.disabilities || student.issues || []) || "未填");
+    merge(5,12,15,"學年度／學期");
+    merge(5,16,30,semesterText);
 
-    merge(7,1,4,"備註");
-    merge(7,5,30,student.studentNote || "");
+    merge(6,1,4,"備註");
+    merge(6,5,30,student.studentNote || "");
 
-    styleArea(3,1,7,30,{size:11});
-    ["A3","L3","A4","L4","A5","L5","A6","A7"].forEach(addr=>{
+    styleArea(3,1,6,30,{size:11});
+    ["A3","L3","A4","L4","A5","L5","A6"].forEach(addr=>{
       ws.getCell(addr).font={name:"標楷體",size:11,bold:true};
       ws.getCell(addr).alignment={
         horizontal:"center",
@@ -650,7 +662,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
         shrinkToFit:false
       };
     });
-    ["E3","P3","E4","P4","E5","P5","E6","E7"].forEach(addr=>{
+    ["E3","P3","E4","P4","E5","P5","E6"].forEach(addr=>{
       ws.getCell(addr).alignment={
         horizontal:"left",
         vertical:"middle",
@@ -661,13 +673,13 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
 
     ws.getRow(3).height=23;
     ws.getRow(4).height=23;
-    ws.getRow(6).height=Math.max(
+    ws.getRow(5).height=Math.max(
       23,
       Math.min(55, 14 + estimateExcelTextLines(
-        displayMulti(student.disabilities || student.issues || []), 70
+        displayMulti(student.disabilities || student.issues || []), 28
       ) * 15)
     );
-    ws.getRow(7).height=Math.max(
+    ws.getRow(6).height=Math.max(
       23,
       Math.min(85, 14 + estimateExcelTextLines(student.studentNote || "",70) * 15)
     );
@@ -684,21 +696,21 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       .map(([name,count])=>`${name}：${count} 次`)
       .join("　");
 
-    merge(8,1,7,"服務類型統計");
-    merge(8,8,30,typeText);
-    styleArea(8,1,8,30,{size:11});
-    ws.getCell("A8").font={name:"標楷體",size:11,bold:true};
-    ws.getCell("A8").alignment={horizontal:"center",vertical:"middle",wrapText:false};
-    ws.getCell("H8").alignment={horizontal:"left",vertical:"middle",wrapText:true};
-    ws.getRow(8).height=Math.max(
+    merge(7,1,7,"服務類型統計");
+    merge(7,8,30,typeText);
+    styleArea(7,1,7,30,{size:11});
+    ws.getCell("A7").font={name:"標楷體",size:11,bold:true};
+    ws.getCell("A7").alignment={horizontal:"center",vertical:"middle",wrapText:false};
+    ws.getCell("H7").alignment={horizontal:"left",vertical:"middle",wrapText:true};
+    ws.getRow(7).height=Math.max(
       26,
       Math.min(60, 14 + estimateExcelTextLines(typeText,60) * 15)
     );
 
     // 二、服務紀錄
-    merge(9,1,30,"二、服務紀錄");
-    styleArea(9,1,9,30,{size:13,bold:true,horizontal:"left",wrap:false});
-    ws.getRow(9).height=22;
+    merge(8,1,30,"二、服務紀錄");
+    styleArea(8,1,8,30,{size:13,bold:true,horizontal:"left",wrap:false});
+    ws.getRow(8).height=22;
 
     /*
       服務紀錄欄位重新分配：
@@ -710,19 +722,19 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       內容摘述 S:AD（12欄）
       配合整體欄寬加大，內容摘述可容納更多文字，減少列高與頁數。
     */
-    merge(10,1,2,"次數");
-    merge(10,3,5,"日期");
-    merge(10,6,9,"對象");
-    merge(10,10,13,"方式");
-    merge(10,14,18,"類型");
-    merge(10,19,30,"內容摘述");
-    styleArea(10,1,10,30,{
+    merge(9,1,2,"次數");
+    merge(9,3,5,"日期");
+    merge(9,6,9,"對象");
+    merge(9,10,13,"方式");
+    merge(9,14,18,"類型");
+    merge(9,19,30,"內容摘述");
+    styleArea(9,1,9,30,{
       size:11,
       bold:true,
       fill:"FFE7E6E6",
       wrap:false
     });
-    ws.getRow(10).height=23;
+    ws.getRow(9).height=23;
 
     /*
       內容摘述的列高依實際文字量精準估算：
@@ -730,7 +742,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       - 每行只保留少量安全空間，避免列高過度放大。
       - 超過 Excel 單列安全高度時才拆成續列。
     */
-    let outputRow = 11;
+    let outputRow = 10;
 
     records.forEach((r,recordIndex)=>{
       const targets=displayMulti(r.targets || r.target);

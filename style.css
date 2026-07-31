@@ -134,3 +134,10 @@ label{font-weight:700;display:block;margin-bottom:5px}
 .semester-count{padding:4px 9px;border-radius:999px;background:#fff;color:#075985;font-size:13px}
 .semester-group .record-table-wrap{margin-top:0;padding:0 12px 12px}
 @media(max-width:800px){.sidebar{height:auto;position:static}.semester-fields{grid-template-columns:1fr}}
+
+/* v1.4.1：學期勾選下載 */
+.semester-group>summary{justify-content:flex-start}
+.semester-select{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;cursor:pointer}
+.semester-select input{width:18px;height:18px;margin:0;accent-color:#38bdf8;cursor:pointer}
+.semester-title{flex:1;font-weight:900}
+.semester-download-hint{margin-top:14px;padding:10px 12px;border-radius:12px;background:#f0f9ff;color:#075985;font-size:14px}
