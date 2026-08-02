@@ -59,6 +59,13 @@ function displayMulti(value){ return asArray(value).join("、"); }
 function normalizedMethods(value){ return asArray(value).map(x=>x==="會議"?"活動／會議":x); }
 function displayMethods(value){ return displayMulti(normalizedMethods(value)); }
 function checkboxOptions(name,options,selected=[]){ const values=asArray(selected); return options.map(x=>`<label class="option-chip"><input type="checkbox" name="${name}" value="${esc(x)}" ${values.includes(x)?"checked":""}><span>${esc(x)}</span></label>`).join(""); }
+function formatExcelServiceDate(value){
+  const text=String(value||"").trim();
+  const m=text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(!m)return text;
+  return `${Number(m[1])}/${Number(m[2])}/${Number(m[3])}`;
+}
+
 function splitTextByDisplayUnits(text,maxUnits=820){ const source=String(text||""); if(!source) return [""]; const parts=[]; let current="",units=0; const charUnits=ch=>/[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/.test(ch)?2:1; for(const ch of source){ const u=ch==="\n"?0:charUnits(ch); if(units+u>maxUnits&&current){parts.push(current);current="";units=0;} current+=ch;units+=u;if(ch==="\n"&&units>maxUnits*.82){parts.push(current);current="";units=0;} } if(current||!parts.length)parts.push(current); return parts; }
 
 function isAssistant(){ return accessProfile?.role === "assistant"; }
@@ -772,7 +779,7 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       }
 
       ws.getCell(firstRow,1).value=recordIndex+1;
-      ws.getCell(firstRow,3).value=r.date || "";
+      ws.getCell(firstRow,3).value=formatExcelServiceDate(r.date);
       ws.getCell(firstRow,6).value=targets;
       ws.getCell(firstRow,10).value=methodsExcel;
       ws.getCell(firstRow,14).value=typesExcel;
