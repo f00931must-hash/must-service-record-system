@@ -442,7 +442,7 @@ function renderBatchAddView(){
       <div class="full multi-section"><label>對象（可複選）</label><div class="option-grid">${checkboxOptions("targets",TARGET_OPTIONS,[])}</div></div>
       <div class="full multi-section"><label>方式（可複選）</label><div class="option-grid">${checkboxOptions("methods",METHOD_OPTIONS,[])}</div></div>
       <div class="full multi-section"><label>類型（可複選）</label><div class="option-grid">${checkboxOptions("types",SERVICE_TYPE_OPTIONS,[])}</div></div>
-      <div class="full ai-box"><label>內容摘述</label><textarea id="batchSummaryInput" name="summary" class="field summary-editor" required></textarea></div>
+      <div class="full ai-box"><label>內容摘述</label><textarea id="batchSummaryInput" name="summary" class="field summary-editor" required></textarea><div class="ai-actions"><button type="button" id="batchAiPolishBtn" class="ghost-btn">✨ AI 潤飾內容摘述</button><button type="button" id="batchRestoreOriginalBtn" class="ghost-btn">還原原文</button></div><p class="hint">AI 只會潤飾這一份共同內容；完成後再一次寫入所有勾選學生，不會依學生人數重複呼叫 AI。</p></div>
     </div>
     <div class="batch-add-submit"><button id="batchAddSubmitBtn" type="submit" class="primary-btn">批次新增服務紀錄</button><span class="hint">送出後，每位學生各自新增一筆，不會改寫原有紀錄。</span></div>
   </form>`;
@@ -458,6 +458,9 @@ function renderBatchAddView(){
   $("batchAddSearch").oninput=renderList;
   $("batchAddSelectAll").onchange=e=>{listEl.querySelectorAll('input[name="batchStudent"]').forEach(cb=>cb.checked=e.target.checked);updateCount();};
   $("batchRecordDate").addEventListener("change",e=>{const si=semesterInfoFromDate(e.target.value);$("batchRecordAcademicYear").value=String(si.academicYear);$("batchRecordSemester").value=String(si.semester);});
+  let batchOriginalText="";
+  $("batchAiPolishBtn").onclick=async()=>{const text=$("batchSummaryInput").value.trim();if(!text)return alert("請先輸入內容摘述。");batchOriginalText=text;const btn=$("batchAiPolishBtn");btn.disabled=true;btn.textContent="AI 潤飾中...";try{const res=await fetch(localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"polish",text})});const data=await res.json();if(!res.ok||data.success===false)throw new Error(data.error||`錯誤 ${res.status}`);$("batchSummaryInput").value=String(data.polished||data.result||data.text||"").trim();toast("AI 潤飾完成");}catch(err){alert("AI 潤飾失敗："+(err.message||err));}finally{btn.disabled=false;btn.textContent="✨ AI 潤飾內容摘述";}};
+  $("batchRestoreOriginalBtn").onclick=()=>{if(!batchOriginalText)return alert("目前沒有可還原的原文。");$("batchSummaryInput").value=batchOriginalText;};
   renderList();
   $("batchAddRecordForm").onsubmit=async e=>{
     e.preventDefault();
