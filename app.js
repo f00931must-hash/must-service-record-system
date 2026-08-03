@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.4.1-semester-download-fix";
+const SERVICE_RECORD_BUILD = "v1.5.0-batch-add-test";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -425,6 +425,65 @@ function recordsByRange(records,range,start,end){
   if(range==="semester")({start:from,end:to}=currentSemesterRange());
   if(range==="academicYear")({start:from,end:to}=currentAcademicYearRange());
   return records.filter(r=>(!from||r.date>=from)&&(!to||r.date<=to));
+}
+
+
+function renderBatchAddView(){
+  const box=$("batchAddRecordBox"); if(!box)return;
+  const info=semesterInfoFromDate(todayLocalIso());
+  const sorted=[...students].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"zh-Hant"));
+  box.innerHTML=`<form id="batchAddRecordForm" class="batch-add-form">
+    <div class="batch-add-toolbar"><input id="batchAddSearch" class="field" placeholder="搜尋姓名、學號、科系或班級"><label class="batch-select-all"><input type="checkbox" id="batchAddSelectAll"> 全選目前顯示學生</label></div>
+    <div id="batchAddStudentList" class="batch-student-grid"></div>
+    <div class="batch-selected-count">已選擇 <strong id="batchAddSelectedCount">0</strong> 位學生</div>
+    <div class="form-grid batch-common-fields">
+      <div><label>日期</label><input id="batchRecordDate" name="date" type="date" class="field date-field" required value="${todayLocalIso()}"></div>
+      <div class="semester-fields"><div><label>學年度</label><select id="batchRecordAcademicYear" name="academicYear" class="field">${academicYearOptions(info.academicYear)}</select></div><div><label>學期</label><select id="batchRecordSemester" name="semester" class="field"><option value="1" ${info.semester===1?"selected":""}>第一學期</option><option value="2" ${info.semester===2?"selected":""}>第二學期</option></select></div></div>
+      <div class="full multi-section"><label>對象（可複選）</label><div class="option-grid">${checkboxOptions("targets",TARGET_OPTIONS,[])}</div></div>
+      <div class="full multi-section"><label>方式（可複選）</label><div class="option-grid">${checkboxOptions("methods",METHOD_OPTIONS,[])}</div></div>
+      <div class="full multi-section"><label>類型（可複選）</label><div class="option-grid">${checkboxOptions("types",SERVICE_TYPE_OPTIONS,[])}</div></div>
+      <div class="full ai-box"><label>內容摘述</label><textarea id="batchSummaryInput" name="summary" class="field summary-editor" required></textarea></div>
+    </div>
+    <div class="batch-add-submit"><button id="batchAddSubmitBtn" type="submit" class="primary-btn">批次新增服務紀錄</button><span class="hint">送出後，每位學生各自新增一筆，不會改寫原有紀錄。</span></div>
+  </form>`;
+  const listEl=$("batchAddStudentList");
+  const renderList=()=>{
+    const q=String($("batchAddSearch").value||"").trim().toLowerCase();
+    const filtered=sorted.filter(st=>!q||[st.name,st.studentId,departmentDisplay(st),programClassDisplay(st)].some(v=>String(v||"").toLowerCase().includes(q)));
+    listEl.innerHTML=filtered.length?filtered.map(st=>`<label class="batch-student-item"><input type="checkbox" name="batchStudent" value="${esc(st.id)}"><span><strong>${esc(st.name)}</strong><small>${esc(st.studentId||"")}｜${esc(programClassDisplay(st)||departmentDisplay(st)||"")}</small></span></label>`).join(""):'<div class="empty">找不到符合的學生。</div>';
+    listEl.querySelectorAll('input[name="batchStudent"]').forEach(cb=>cb.onchange=updateCount);
+    $("batchAddSelectAll").checked=false; updateCount();
+  };
+  const updateCount=()=>{$("batchAddSelectedCount").textContent=document.querySelectorAll('#batchAddStudentList input[name="batchStudent"]:checked').length;};
+  $("batchAddSearch").oninput=renderList;
+  $("batchAddSelectAll").onchange=e=>{listEl.querySelectorAll('input[name="batchStudent"]').forEach(cb=>cb.checked=e.target.checked);updateCount();};
+  $("batchRecordDate").addEventListener("change",e=>{const si=semesterInfoFromDate(e.target.value);$("batchRecordAcademicYear").value=String(si.academicYear);$("batchRecordSemester").value=String(si.semester);});
+  renderList();
+  $("batchAddRecordForm").onsubmit=async e=>{
+    e.preventDefault();
+    const selectedIds=[...document.querySelectorAll('#batchAddStudentList input[name="batchStudent"]:checked')].map(x=>x.value);
+    if(!selectedIds.length)return alert("請至少選擇一位學生。");
+    const fd=new FormData(e.target);
+    const common={date:fd.get("date"),academicYear:Number(fd.get("academicYear")),semester:Number(fd.get("semester")),targets:fd.getAll("targets"),methods:fd.getAll("methods"),types:fd.getAll("types"),summary:String(fd.get("summary")||"").trim()};
+    if(!common.targets.length||!common.methods.length||!common.types.length)return alert("對象、方式、類型都至少勾選一項。");
+    if(!common.summary)return alert("請填寫內容摘述。");
+    const names=selectedIds.map(id=>students.find(st=>st.id===id)?.name||id);
+    if(!confirm(`即將為 ${selectedIds.length} 位學生各新增 1 筆服務紀錄，共 ${selectedIds.length} 筆。\n\n${names.slice(0,12).join("、")}${names.length>12?`……等 ${names.length} 人`:""}\n\n此操作不會覆蓋原有紀錄，是否繼續？`))return;
+    const btn=$("batchAddSubmitBtn");btn.disabled=true;btn.textContent="批次新增中…";
+    let success=0;const failed=[];
+    for(const studentId of selectedIds){
+      const st=students.find(x=>x.id===studentId); if(!st){failed.push(studentId);continue;}
+      try{
+        const data={...common,studentId,studentName:st.name};
+        const ref=await addDoc(collection(db,"records"),{...data,ownerEmail:effectiveOwnerEmail(),createdAt:serverTimestamp(),createdBy:(currentUser.email||"").toLowerCase(),createdByEmail:(currentUser.email||"").toLowerCase(),createdByName:baseActorName(),updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),updatedByName:baseActorName(),deleted:false,batchCreated:true});
+        await writeAudit({action:"create",targetType:"record",targetId:ref.id,studentId,studentName:st.name,after:data,detail:`批次新增服務紀錄（共選 ${selectedIds.length} 人）`});
+        success++;
+      }catch(err){console.error("Batch add failed",st.name,err);failed.push(st.name||studentId);}
+    }
+    btn.disabled=false;btn.textContent="批次新增服務紀錄";
+    await loadAll();
+    if(failed.length)alert(`批次新增完成：成功 ${success} 人，失敗 ${failed.length} 人。\n\n失敗：${failed.join("、")}\n\n失敗者未新增紀錄，請確認後再補登。`);else{alert(`批次新增完成：${success} 位學生皆已成功新增 1 筆服務紀錄。`);renderBatchAddView();}
+  };
 }
 
 function renderBatchDownloadView(){
@@ -877,8 +936,8 @@ function switchView(view){
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",transfer:"批次轉移",settings:"系統設定"}[view]||"";
-  if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="transfer"&&isTeacher())renderTransferView();
+  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",batchAdd:"批次新增紀錄",transfer:"批次轉移",settings:"系統設定"}[view]||"";
+  if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="batchAdd")renderBatchAddView(); if(view==="transfer"&&isTeacher())renderTransferView();
 }
 function openModal(html){$("modalContent").innerHTML=html;$("modal").classList.remove("hidden");}
 function closeModal(){$("modal").classList.add("hidden");$("modalContent").innerHTML="";}

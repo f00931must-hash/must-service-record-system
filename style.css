@@ -141,3 +141,17 @@ label{font-weight:700;display:block;margin-bottom:5px}
 .semester-select input{width:18px;height:18px;margin:0;accent-color:#38bdf8;cursor:pointer}
 .semester-title{flex:1;font-weight:900}
 .semester-download-hint{margin-top:14px;padding:10px 12px;border-radius:12px;background:#f0f9ff;color:#075985;font-size:14px}
+
+/* v1.5.0 測試版：批次新增服務紀錄 */
+.batch-add-form{display:flex;flex-direction:column;gap:18px}
+.batch-add-toolbar{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:12px;align-items:center}
+.batch-select-all{display:flex;align-items:center;gap:8px;font-weight:800;white-space:nowrap}
+.batch-select-all input,.batch-student-item input{width:18px;height:18px;accent-color:#38bdf8}
+.batch-student-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:320px;overflow:auto;padding:4px}
+.batch-student-item{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;cursor:pointer}
+.batch-student-item:has(input:checked){border-color:#38bdf8;background:#f0f9ff}
+.batch-student-item span{display:flex;flex-direction:column;gap:3px;min-width:0}.batch-student-item small{color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.batch-selected-count{padding:10px 14px;border-radius:12px;background:#eef7ff;color:#075985}
+.batch-common-fields{border-top:1px solid var(--line);padding-top:18px}
+.batch-add-submit{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+@media(max-width:800px){.batch-add-toolbar{grid-template-columns:1fr}.batch-student-grid{grid-template-columns:1fr}}
