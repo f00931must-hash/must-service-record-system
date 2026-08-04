@@ -23,7 +23,7 @@ let recentRecords = [];
 let teacherDirectory = [];
 let accessNameDirectory = {};
 
-const DISABILITY_OPTIONS = ["自閉症","情緒障礙","學習障礙","肢體障礙","智能障礙","視覺障礙","聽覺障礙","腦性麻痺","多重障礙"];
+const DISABILITY_OPTIONS = ["自閉症","情緒障礙","學習障礙","肢體障礙","智能障礙","視覺障礙","聽覺障礙","腦性麻痺","多重障礙","身體病弱","語言障礙","其他障礙"];
 const TARGET_OPTIONS = ["學生本人","家長","導師","授課教師","同儕","校內行政人員","其他"];
 const METHOD_OPTIONS = ["面談","電話","LINE／訊息","電子郵件","活動／會議","到班觀察","其他"];
 const SERVICE_TYPE_OPTIONS = ["關懷與追蹤","學習輔導","生活輔導","心理支持","行政協助","人際關係","轉介與資源連結","合理調整","ISP／個案會議","活動參與","其他"];
