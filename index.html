@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>資源教室服務紀錄系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2216%22 fill=%22%2349bff2%22/><text x=%2232%22 y=%2243%22 font-size=%2234%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22Arial%22 font-weight=%22700%22>M</text></svg>">
-  <link rel="stylesheet" href="./style.css?v=1.5.0">
+  <link rel="stylesheet" href="./style.css?v=1.5.2">
 </head>
 <body>
   <div id="loadingView" class="loading-view hidden"><div class="loading-card"><div class="loading-spinner"></div><strong>正在確認權限並載入資料…</strong></div></div>
@@ -15,7 +15,7 @@
       <div class="logo">M</div>
       <h1>資源教室服務紀錄系統</h1>
       <p>個管老師與小幫手的學生服務紀錄管理</p>
-      <div class="hint">版本 v1.5.1 測試版｜批次新增 AI 潤飾</div>
+      <div class="hint">版本 v1.5.2｜學生篩選與服務紀錄排序</div>
       <button id="loginBtn" class="primary-btn">使用 Google 帳號登入</button>
       <a href="../" class="back-link">回入口網站</a>
     </div>
@@ -41,7 +41,17 @@
       </header>
 
       <section id="view-students" class="view">
-        <div class="toolbar"><input id="studentSearch" class="field" placeholder="搜尋姓名、學號、科系或班級"><button id="addStudentBtn" class="primary-btn">＋新增學生</button></div>
+        <div class="toolbar student-toolbar">
+          <input id="studentSearch" class="field" placeholder="搜尋姓名、學號、科系或班級">
+          <select id="departmentFilter" class="field" aria-label="依科系篩選"><option value="">全部科系</option></select>
+          <select id="gradeFilter" class="field" aria-label="依年級篩選"><option value="">全部年級</option></select>
+          <select id="studentSort" class="field" aria-label="學生排序方式">
+            <option value="name">依姓名排序</option>
+            <option value="record-desc">最新新增紀錄優先</option>
+            <option value="record-asc">最早新增紀錄優先</option>
+          </select>
+          <button id="addStudentBtn" class="primary-btn">＋新增學生</button>
+        </div>
         <div id="studentList" class="card-grid"></div>
       </section>
 
@@ -59,6 +69,6 @@
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script type="module" src="./app.js?v=1.5.0"></script>
+  <script type="module" src="./app.js?v=1.5.2"></script>
 </body>
 </html>

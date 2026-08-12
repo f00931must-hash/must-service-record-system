@@ -31,6 +31,7 @@ body{margin:0;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;backgro
 .topbar h1{margin:5px 0 0}
 .user-area{display:flex;align-items:center;gap:10px}
 .toolbar{display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:18px}
+.student-toolbar{grid-template-columns:minmax(240px,1fr) repeat(3,minmax(145px,190px)) auto}
 .field{width:100%;border:1px solid #d7e4ee;border-radius:14px;padding:12px 14px;font:inherit;background:#fff}
 textarea.field{min-height:120px;resize:vertical}
 .primary-btn,.ghost-btn,.danger-btn{border-radius:14px;padding:11px 16px;font:inherit;font-weight:800;cursor:pointer}
@@ -39,6 +40,8 @@ textarea.field{min-height:120px;resize:vertical}
 .danger-btn{border:1px solid #fecaca;background:#fff;color:var(--danger)}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
 .student-card,.panel{background:#fff;border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 8px 22px rgba(15,23,42,.05)}
+.student-card{position:relative}
+.new-badge{position:absolute;top:-8px;left:-8px;padding:5px 9px;border-radius:999px;background:#ef4444;color:#fff;font-size:11px;font-weight:900;letter-spacing:.04em;box-shadow:0 4px 10px rgba(239,68,68,.28)}
 .student-card h3{margin:0 0 10px;font-size:21px}
 .meta{color:var(--muted);line-height:1.8}
 .card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
@@ -65,6 +68,7 @@ label{font-weight:700;display:block;margin-bottom:5px}
   .topbar{align-items:flex-start;flex-direction:column}
   .form-grid{grid-template-columns:1fr}
   .toolbar{grid-template-columns:1fr}
+  .student-toolbar{grid-template-columns:1fr}
 }
 
 .option-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px;margin-top:8px}

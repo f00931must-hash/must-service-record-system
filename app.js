@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.5.0-batch-add-test";
+const SERVICE_RECORD_BUILD = "v1.5.2-student-filter-sort-new";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -20,6 +20,7 @@ let currentUser = null;
 let accessProfile = null;
 let students = [];
 let recentRecords = [];
+let studentRecordActivity = new Map();
 let teacherDirectory = [];
 let accessNameDirectory = {};
 
@@ -89,6 +90,34 @@ function canManageRecord(record){
 }
 function safeClone(obj){ return JSON.parse(JSON.stringify(obj||{})); }
 function dateText(v){ if(!v) return ""; if(v?.toDate) return v.toDate().toLocaleString("zh-TW"); if(v instanceof Date) return v.toLocaleString("zh-TW"); return String(v); }
+function timestampMillis(value){
+  if(!value)return 0;
+  if(typeof value.toMillis==="function")return value.toMillis();
+  if(typeof value.seconds==="number")return value.seconds*1000+Math.floor((value.nanoseconds||0)/1000000);
+  const parsed=new Date(value).getTime();
+  return Number.isFinite(parsed)?parsed:0;
+}
+function gradeFilterValue(student){
+  const entry=Number(student?.entryAcademicYear||0);
+  if(!entry)return "";
+  const grade=currentAcademicYearROC()-entry+1;
+  if(grade<1)return "尚未入學";
+  return `${String(student?.program||"").includes("研")?"研":""}${gradeNumberToText(grade)}`;
+}
+function gradeFilterLabel(value){ return value==="尚未入學"?value:`${value}年級`; }
+function newSeenStorageKey(studentId){ return `service_record_seen_${effectiveOwnerEmail()}_${studentId}`; }
+function latestRecordChangeMillis(studentId){ return studentRecordActivity.get(studentId)?.latestChange||0; }
+function hasUnseenRecordChange(studentId){
+  const latest=latestRecordChangeMillis(studentId);
+  if(!latest)return false;
+  const stored=localStorage.getItem(newSeenStorageKey(studentId));
+  if(stored===null){ localStorage.setItem(newSeenStorageKey(studentId),String(latest)); return false; }
+  return latest>Number(stored||0);
+}
+function markStudentRecordsSeen(studentId){
+  const latest=latestRecordChangeMillis(studentId);
+  if(latest)localStorage.setItem(newSeenStorageKey(studentId),String(latest));
+}
 
 async function resolveAccess(user){
   const email=(user.email||"").toLowerCase();
@@ -188,6 +217,9 @@ $("logoutBtn").onclick=()=>signOut(auth);
 $("modalClose").onclick=closeModal;
 $("addStudentBtn").onclick=()=>openStudentForm();
 $("studentSearch").oninput=renderStudents;
+$("departmentFilter").onchange=renderStudents;
+$("gradeFilter").onchange=renderStudents;
+$("studentSort").onchange=renderStudents;
 $("saveSettingsBtn").onclick=()=>{const endpoint=$("aiEndpoint").value.trim()||DEFAULT_AI_ENDPOINT;localStorage.setItem("service_ai_endpoint",endpoint);$("aiEndpoint").value=endpoint;toast("AI 安全代理網址已儲存");};
 document.querySelectorAll(".nav").forEach(btn=>btn.onclick=()=>switchView(btn.dataset.view));
 let modalPointerStartedOnBackdrop=false;
@@ -250,18 +282,67 @@ onAuthStateChanged(auth,async user=>{
 
 async function loadAll(){
   await loadStudents();
-  await Promise.all([loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);
+  await Promise.all([loadStudentRecordActivity(),loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);
+  renderStudentFilters();
+  renderStudents();
   renderBatchDownloadView();
   if(isTeacher())renderTransferView();
 }
 async function loadStudents(){const snap=await getDocs(query(collection(db,"students"),where("ownerEmail","==",effectiveOwnerEmail())));students=snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.deleted!==true).sort((a,b)=>(a.name||"").localeCompare(b.name||"","zh-Hant"));renderStudents();}
 
+async function loadStudentRecordActivity(){
+  const constraints=[where("ownerEmail","==",effectiveOwnerEmail())];
+  if(isAssistant())constraints.push(where("createdBy","==",(currentUser.email||"").toLowerCase()));
+  const snap=await getDocs(query(collection(db,"records"),...constraints));
+  studentRecordActivity=new Map();
+  snap.docs.forEach(recordDoc=>{
+    const record=recordDoc.data();
+    if(record.deleted===true||!record.studentId)return;
+    const current=studentRecordActivity.get(record.studentId)||{latestCreated:0,latestChange:0};
+    current.latestCreated=Math.max(current.latestCreated,timestampMillis(record.createdAt));
+    current.latestChange=Math.max(current.latestChange,timestampMillis(record.updatedAt),timestampMillis(record.createdAt));
+    studentRecordActivity.set(record.studentId,current);
+  });
+}
+
+function renderStudentFilters(){
+  const departmentSelect=$("departmentFilter");
+  const gradeSelect=$("gradeFilter");
+  const selectedDepartment=departmentSelect.value;
+  const selectedGrade=gradeSelect.value;
+  const departments=[...new Set(students.map(departmentBase).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"zh-Hant"));
+  const grades=[...new Set(students.map(gradeFilterValue).filter(Boolean))].sort((a,b)=>{
+    if(a==="尚未入學")return 1;
+    if(b==="尚未入學")return -1;
+    return a.localeCompare(b,"zh-Hant-u-kn-true");
+  });
+  departmentSelect.innerHTML=`<option value="">全部科系</option>${departments.map(x=>`<option value="${esc(x)}">${esc(x)}系</option>`).join("")}`;
+  gradeSelect.innerHTML=`<option value="">全部年級</option>${grades.map(x=>`<option value="${esc(x)}">${esc(gradeFilterLabel(x))}</option>`).join("")}`;
+  if(departments.includes(selectedDepartment))departmentSelect.value=selectedDepartment;
+  if(grades.includes(selectedGrade))gradeSelect.value=selectedGrade;
+}
+
 function renderStudents(){
   const key=($("studentSearch").value||"").trim().toLowerCase();
-  const list=students.filter(s=>[s.name,s.studentId,departmentDisplay(s),programClassDisplay(s)].join(" ").toLowerCase().includes(key));
-  $("studentList").innerHTML=list.length?list.map(s=>`<article class="student-card"><h3>${esc(s.name)}</h3><div class="meta">學號：${esc(s.studentId)}<br>科系：${esc(departmentDisplay(s))}<br>學制/系級：${esc(programClassDisplay(s))}<br>生理性別：${esc(s.biologicalSex||"")}<br>學生障別：${esc(displayMulti(s.disabilities||s.issues||[]))||"未填"}</div><div class="card-actions"><button class="primary-btn" data-add-record="${s.id}">新增服務紀錄</button><button class="ghost-btn" data-view-student="${s.id}">查看紀錄</button><button class="ghost-btn" data-edit-student="${s.id}">修改學生</button>${isTeacher()?`<button class="ghost-btn" data-transfer-student="${s.id}">轉移</button>`:""}</div></article>`).join(""):'<div class="empty">目前沒有學生資料。</div>';
+  const department=$("departmentFilter").value;
+  const grade=$("gradeFilter").value;
+  const sort=$("studentSort").value;
+  const list=students.filter(s=>(!key||[s.name,s.studentId,departmentDisplay(s),programClassDisplay(s)].join(" ").toLowerCase().includes(key))&&(!department||departmentBase(s)===department)&&(!grade||gradeFilterValue(s)===grade));
+  list.sort((a,b)=>{
+    if(sort==="record-desc"||sort==="record-asc"){
+      const aTime=studentRecordActivity.get(a.id)?.latestCreated||0;
+      const bTime=studentRecordActivity.get(b.id)?.latestCreated||0;
+      if(aTime!==bTime){
+        if(!aTime)return 1;
+        if(!bTime)return -1;
+        return sort==="record-desc"?bTime-aTime:aTime-bTime;
+      }
+    }
+    return String(a.name||"").localeCompare(String(b.name||""),"zh-Hant");
+  });
+  $("studentList").innerHTML=list.length?list.map(s=>`<article class="student-card">${hasUnseenRecordChange(s.id)?'<span class="new-badge">NEW</span>':""}<h3>${esc(s.name)}</h3><div class="meta">學號：${esc(s.studentId)}<br>科系：${esc(departmentDisplay(s))}<br>學制/系級：${esc(programClassDisplay(s))}<br>生理性別：${esc(s.biologicalSex||"")}<br>學生障別：${esc(displayMulti(s.disabilities||s.issues||[]))||"未填"}</div><div class="card-actions"><button class="primary-btn" data-add-record="${s.id}">新增服務紀錄</button><button class="ghost-btn" data-view-student="${s.id}">查看紀錄</button><button class="ghost-btn" data-edit-student="${s.id}">修改學生</button>${isTeacher()?`<button class="ghost-btn" data-transfer-student="${s.id}">轉移</button>`:""}</div></article>`).join(""):'<div class="empty">找不到符合篩選條件的學生。</div>';
   document.querySelectorAll("[data-add-record]").forEach(b=>b.onclick=()=>openRecordForm(b.dataset.addRecord));
-  document.querySelectorAll("[data-view-student]").forEach(b=>b.onclick=()=>openStudentRecords(b.dataset.viewStudent));
+  document.querySelectorAll("[data-view-student]").forEach(b=>b.onclick=()=>{markStudentRecordsSeen(b.dataset.viewStudent);renderStudents();openStudentRecords(b.dataset.viewStudent);});
   document.querySelectorAll("[data-edit-student]").forEach(b=>b.onclick=()=>openStudentForm(b.dataset.editStudent));
   document.querySelectorAll("[data-transfer-student]").forEach(b=>b.onclick=()=>openTransferDialog([b.dataset.transferStudent]));
 }
