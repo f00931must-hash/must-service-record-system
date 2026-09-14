@@ -13,9 +13,10 @@ window.fetch=(input,init)=>{
   return nativeFetch(input,init);
 };
 
-// 舊版若曾把 Worker 網址存進瀏覽器設定，順便改成新的 Cloud Run 路徑。
+// 將尚未設定或仍使用舊 Worker 的瀏覽器，切到新的 Cloud Run 路徑。
 try{
-  if(localStorage.getItem("service_ai_endpoint")===OLD_SERVICE_AI){
+  const stored=localStorage.getItem("service_ai_endpoint");
+  if(!stored||stored===OLD_SERVICE_AI){
     localStorage.setItem("service_ai_endpoint",NEW_SERVICE_AI);
   }
 }catch(error){
