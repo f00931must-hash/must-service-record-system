@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.5.2-student-filter-sort-new";
+const SERVICE_RECORD_BUILD = "v1.5.3-record-dashboard";
 const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -96,6 +96,19 @@ function timestampMillis(value){
   if(typeof value.seconds==="number")return value.seconds*1000+Math.floor((value.nanoseconds||0)/1000000);
   const parsed=new Date(value).getTime();
   return Number.isFinite(parsed)?parsed:0;
+}
+function dashboardDateText(value){
+  const millis=timestampMillis(value);
+  if(!millis)return "";
+  return new Date(millis).toLocaleString("zh-TW",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+}
+function summaryPreview(value,maxLength=36){
+  const text=String(value||"").replace(/\s+/g," ").trim();
+  return text.length>maxLength?`${text.slice(0,maxLength)}…`:text;
+}
+function dashboardGradeDisplay(student){
+  const value=gradeFilterValue(student);
+  return value?gradeFilterLabel(value):"未填";
 }
 function gradeFilterValue(student){
   const entry=Number(student?.entryAcademicYear||0);
@@ -220,6 +233,11 @@ $("studentSearch").oninput=renderStudents;
 $("departmentFilter").onchange=renderStudents;
 $("gradeFilter").onchange=renderStudents;
 $("studentSort").onchange=renderStudents;
+$("dashboardSearch").oninput=renderRecordDashboard;
+$("dashboardDepartmentFilter").onchange=renderRecordDashboard;
+$("dashboardGradeFilter").onchange=renderRecordDashboard;
+$("dashboardStatusFilter").onchange=renderRecordDashboard;
+$("dashboardSort").onchange=renderRecordDashboard;
 $("saveSettingsBtn").onclick=()=>{const endpoint=$("aiEndpoint").value.trim()||DEFAULT_AI_ENDPOINT;localStorage.setItem("service_ai_endpoint",endpoint);$("aiEndpoint").value=endpoint;toast("AI 安全代理網址已儲存");};
 document.querySelectorAll(".nav").forEach(btn=>btn.onclick=()=>switchView(btn.dataset.view));
 let modalPointerStartedOnBackdrop=false;
@@ -284,7 +302,9 @@ async function loadAll(){
   await loadStudents();
   await Promise.all([loadStudentRecordActivity(),loadRecentRecords(),loadAuditLogs(),loadRecycleBin()]);
   renderStudentFilters();
+  renderDashboardFilters();
   renderStudents();
+  renderRecordDashboard();
   renderBatchDownloadView();
   if(isTeacher())renderTransferView();
 }
@@ -298,11 +318,79 @@ async function loadStudentRecordActivity(){
   snap.docs.forEach(recordDoc=>{
     const record=recordDoc.data();
     if(record.deleted===true||!record.studentId)return;
-    const current=studentRecordActivity.get(record.studentId)||{latestCreated:0,latestChange:0};
+    const current=studentRecordActivity.get(record.studentId)||{latestCreated:0,latestChange:0,latestRecord:null};
+    const changeTime=Math.max(timestampMillis(record.updatedAt),timestampMillis(record.createdAt));
     current.latestCreated=Math.max(current.latestCreated,timestampMillis(record.createdAt));
-    current.latestChange=Math.max(current.latestChange,timestampMillis(record.updatedAt),timestampMillis(record.createdAt));
+    if(changeTime>=current.latestChange){
+      current.latestChange=changeTime;
+      current.latestRecord={id:recordDoc.id,...record};
+    }
     studentRecordActivity.set(record.studentId,current);
   });
+}
+
+function renderRecordDashboard(){
+  const host=$("recordDashboard");
+  if(!host)return;
+  const key=($("dashboardSearch")?.value||"").trim().toLowerCase();
+  const department=$("dashboardDepartmentFilter")?.value||"";
+  const grade=$("dashboardGradeFilter")?.value||"";
+  const status=$("dashboardStatusFilter")?.value||"";
+  const sort=$("dashboardSort")?.value||"missing-first";
+  const rows=students.map(student=>{
+    const activity=studentRecordActivity.get(student.id);
+    return {student,latest:activity?.latestRecord||null,changeTime:activity?.latestChange||0};
+  }).filter(({student,latest})=>{
+    const searchable=[student.name,student.studentId,departmentDisplay(student),dashboardGradeDisplay(student),latest?.summary].join(" ").toLowerCase();
+    return (!key||searchable.includes(key))
+      &&(!department||departmentBase(student)===department)
+      &&(!grade||gradeFilterValue(student)===grade)
+      &&(!status||(status==="completed"?Boolean(latest):!latest));
+  }).sort((a,b)=>{
+    if(sort==="name")return String(a.student.name||"").localeCompare(String(b.student.name||""),"zh-Hant");
+    if(sort==="updated-asc"){
+      if(Boolean(a.latest)!==Boolean(b.latest))return a.latest?-1:1;
+      if(a.changeTime!==b.changeTime)return a.changeTime-b.changeTime;
+    }else if(sort==="updated-desc"){
+      if(Boolean(a.latest)!==Boolean(b.latest))return a.latest?-1:1;
+      if(a.changeTime!==b.changeTime)return b.changeTime-a.changeTime;
+    }else{
+      if(Boolean(a.latest)!==Boolean(b.latest))return a.latest?1:-1;
+      if(a.changeTime!==b.changeTime)return b.changeTime-a.changeTime;
+    }
+    return String(a.student.name||"").localeCompare(String(b.student.name||""),"zh-Hant");
+  });
+  const completed=rows.filter(row=>row.latest).length;
+  host.innerHTML=`
+    <div class="dashboard-stats">
+      <div class="dashboard-stat"><span>總學生</span><strong>${rows.length}</strong></div>
+      <div class="dashboard-stat completed"><span>已填寫</span><strong>${completed}</strong></div>
+      <div class="dashboard-stat pending"><span>尚未填寫</span><strong>${rows.length-completed}</strong></div>
+    </div>
+    <div class="dashboard-table-wrap">
+      <table class="dashboard-table">
+        <thead><tr><th>姓名</th><th>科系</th><th>年級</th><th>最後一次修改日期</th><th>修改內容</th></tr></thead>
+        <tbody>${rows.length?rows.map(({student,latest})=>`<tr class="${latest?"":"dashboard-missing"}"><td>${esc(student.name||"")}</td><td>${esc(departmentDisplay(student)||"未填")}</td><td>${esc(dashboardGradeDisplay(student))}</td><td>${latest?esc(dashboardDateText(latest.updatedAt||latest.createdAt)):'<span class="dashboard-pending-text">尚未填寫</span>'}</td><td class="dashboard-summary">${latest?esc(summaryPreview(latest.summary)||"（無內容）"):"—"}</td></tr>`).join(""):'<tr><td colspan="5" class="empty">目前沒有學生資料。</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderDashboardFilters(){
+  const departmentSelect=$("dashboardDepartmentFilter");
+  const gradeSelect=$("dashboardGradeFilter");
+  if(!departmentSelect||!gradeSelect)return;
+  const selectedDepartment=departmentSelect.value;
+  const selectedGrade=gradeSelect.value;
+  const departments=[...new Set(students.map(departmentBase).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"zh-Hant"));
+  const grades=[...new Set(students.map(gradeFilterValue).filter(Boolean))].sort((a,b)=>{
+    if(a==="尚未入學")return 1;
+    if(b==="尚未入學")return -1;
+    return a.localeCompare(b,"zh-Hant-u-kn-true");
+  });
+  departmentSelect.innerHTML=`<option value="">全部科系</option>${departments.map(x=>`<option value="${esc(x)}">${esc(x)}系</option>`).join("")}`;
+  gradeSelect.innerHTML=`<option value="">全部年級</option>${grades.map(x=>`<option value="${esc(x)}">${esc(gradeFilterLabel(x))}</option>`).join("")}`;
+  if(departments.includes(selectedDepartment))departmentSelect.value=selectedDepartment;
+  if(grades.includes(selectedGrade))gradeSelect.value=selectedGrade;
 }
 
 function renderStudentFilters(){
@@ -1020,8 +1108,8 @@ function switchView(view){
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  $("pageTitle").textContent={students:"我的學生",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",batchAdd:"批次新增紀錄",transfer:"批次轉移",settings:"系統設定"}[view]||"";
-  if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="batchAdd")renderBatchAddView(); if(view==="transfer"&&isTeacher())renderTransferView();
+  $("pageTitle").textContent={students:"我的學生",dashboard:"填寫儀表板",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",batchAdd:"批次新增紀錄",transfer:"批次轉移",settings:"系統設定"}[view]||"";
+  if(view==="dashboard")renderRecordDashboard(); if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="batchAdd")renderBatchAddView(); if(view==="transfer"&&isTeacher())renderTransferView();
 }
 function openModal(html){$("modalContent").innerHTML=html;$("modal").classList.remove("hidden");}
 function closeModal(){$("modal").classList.add("hidden");$("modalContent").innerHTML="";}
