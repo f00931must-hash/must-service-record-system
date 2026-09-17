@@ -159,3 +159,19 @@ label{font-weight:700;display:block;margin-bottom:5px}
 .batch-common-fields{border-top:1px solid var(--line);padding-top:18px}
 .batch-add-submit{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 @media(max-width:800px){.batch-add-toolbar{grid-template-columns:1fr}.batch-student-grid{grid-template-columns:1fr}}
+
+/* v1.5.3：服務紀錄填寫儀表板 */
+.dashboard-toolbar{display:grid;grid-template-columns:minmax(240px,1.5fr) repeat(4,minmax(135px,1fr));gap:10px;margin-top:18px}
+.dashboard-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+.dashboard-stat{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#f8fafc}
+.dashboard-stat span{color:var(--muted);font-weight:800}.dashboard-stat strong{font-size:26px;color:#0f172a}
+.dashboard-stat.completed{background:#ecfdf5;border-color:#a7f3d0}.dashboard-stat.pending{background:#fff7ed;border-color:#fed7aa}
+.dashboard-table-wrap{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px}
+.dashboard-table{width:100%;min-width:780px;border-collapse:collapse;background:#fff}
+.dashboard-table th,.dashboard-table td{padding:12px 14px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:middle}
+.dashboard-table th{background:#eef7ff;color:#0f4c6a;white-space:nowrap}.dashboard-table tbody tr:last-child td{border-bottom:0}
+.dashboard-table tbody tr:hover{background:#f8fbff}.dashboard-missing{background:#fffaf5}.dashboard-missing:hover{background:#fff7ed!important}
+.dashboard-table td:first-child{font-weight:900;white-space:nowrap}.dashboard-table td:nth-child(2),.dashboard-table td:nth-child(3),.dashboard-table td:nth-child(4){white-space:nowrap}
+.dashboard-summary{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dashboard-pending-text{color:#c2410c;font-weight:900}
+@media(max-width:1100px){.dashboard-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-toolbar input{grid-column:1/-1}}
+@media(max-width:800px){.dashboard-toolbar{grid-template-columns:1fr}.dashboard-toolbar input{grid-column:auto}.dashboard-stats{grid-template-columns:1fr}.dashboard-table-wrap{margin-top:14px}}
