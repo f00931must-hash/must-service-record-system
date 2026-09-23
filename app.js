@@ -1,5 +1,5 @@
-const SERVICE_RECORD_BUILD = "v1.5.3-record-dashboard";
-const DEFAULT_AI_ENDPOINT = "https://must-resource-ai.f00931-must.workers.dev/ai/polish";
+const SERVICE_RECORD_BUILD = "v1.5.4-cloud-run-default";
+const DEFAULT_AI_ENDPOINT = "https://must-isp-ai-697793258377.asia-east1.run.app/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
