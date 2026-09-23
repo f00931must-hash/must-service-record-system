@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.5.4-cloud-run-default";
+const SERVICE_RECORD_BUILD = "v1.5.5-cloud-run-direct";
 const DEFAULT_AI_ENDPOINT = "https://must-isp-ai-697793258377.asia-east1.run.app/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -238,7 +238,7 @@ $("dashboardDepartmentFilter").onchange=renderRecordDashboard;
 $("dashboardGradeFilter").onchange=renderRecordDashboard;
 $("dashboardStatusFilter").onchange=renderRecordDashboard;
 $("dashboardSort").onchange=renderRecordDashboard;
-$("saveSettingsBtn").onclick=()=>{const endpoint=$("aiEndpoint").value.trim()||DEFAULT_AI_ENDPOINT;localStorage.setItem("service_ai_endpoint",endpoint);$("aiEndpoint").value=endpoint;toast("AI 安全代理網址已儲存");};
+$("saveSettingsBtn").onclick=()=>{localStorage.setItem("service_ai_endpoint",DEFAULT_AI_ENDPOINT);$("aiEndpoint").value=DEFAULT_AI_ENDPOINT;toast("AI 已固定使用 Cloud Run");};
 document.querySelectorAll(".nav").forEach(btn=>btn.onclick=()=>switchView(btn.dataset.view));
 let modalPointerStartedOnBackdrop=false;
 $("modal").addEventListener("pointerdown",e=>{modalPointerStartedOnBackdrop=e.target===$("modal");});
@@ -281,7 +281,7 @@ onAuthStateChanged(auth,async user=>{
     $("userEmail").textContent=user.email||"";
     $("roleBadge").textContent=isAssistant()?"小幫手":"個管老師";
     document.querySelectorAll(".teacher-only").forEach(el=>el.classList.toggle("role-hidden",!isTeacher()));
-    $("aiEndpoint").value=localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT;
+    localStorage.setItem("service_ai_endpoint",DEFAULT_AI_ENDPOINT);$("aiEndpoint").value=DEFAULT_AI_ENDPOINT;
 
     switchView("students");
     await loadTeacherDirectory();
@@ -467,7 +467,7 @@ async function openRecordForm(studentId,recordId=""){
   $("recordDateInput")?.addEventListener("change",e=>{const info=semesterInfoFromDate(e.target.value);$("recordAcademicYear").value=String(info.academicYear);$("recordSemester").value=String(info.semester);});
   let originalText=$("summaryInput").value;
   $("restoreOriginalBtn").onclick=()=>$("summaryInput").value=originalText;
-  $("aiPolishBtn").onclick=async()=>{const text=$("summaryInput").value.trim();if(!text)return alert("請先輸入內容摘述。");originalText=text;const btn=$("aiPolishBtn");btn.disabled=true;btn.textContent="AI 潤飾中...";try{const res=await fetch(localStorage.getItem("service_ai_endpoint")||DEFAULT_AI_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"polish",text})});const data=await res.json();if(!res.ok||data.success===false)throw new Error(data.error||`錯誤 ${res.status}`);$("summaryInput").value=String(data.polished||data.result||data.text||"").trim();toast("AI 潤飾完成");}catch(err){alert("AI 潤飾失敗："+(err.message||err));}finally{btn.disabled=false;btn.textContent="✨ AI 潤飾內容摘述";}};
+  $("aiPolishBtn").onclick=async()=>{const text=$("summaryInput").value.trim();if(!text)return alert("請先輸入內容摘述。");originalText=text;const btn=$("aiPolishBtn");btn.disabled=true;btn.textContent="AI 潤飾中...";try{const res=await fetch(DEFAULT_AI_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"polish",text})});const data=await res.json();if(!res.ok||data.success===false)throw new Error(data.error||`錯誤 ${res.status}`);$("summaryInput").value=String(data.polished||data.result||data.text||"").trim();toast("AI 潤飾完成");}catch(err){alert("AI 潤飾失敗："+(err.message||err));}finally{btn.disabled=false;btn.textContent="✨ AI 潤飾內容摘述";}};
   $("recordForm").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);const data={studentId,studentName:s.name,date:fd.get("date"),academicYear:Number(fd.get("academicYear")),semester:Number(fd.get("semester")),targets:fd.getAll("targets"),methods:fd.getAll("methods"),types:fd.getAll("types"),summary:fd.get("summary")};if(!data.targets.length||!data.methods.length||!data.types.length)return alert("對象、方式、類型都至少勾選一項。");if(recordId){if(!canManageRecord(existing))return alert("你只能修改自己建立的服務紀錄。");const before=safeClone(existing);await updateDoc(doc(db,"records",recordId),{...data,updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),updatedByName:baseActorName()});await writeAudit({action:"update",targetType:"record",targetId:recordId,studentId,studentName:s.name,before,after:data});}else{const ref=await addDoc(collection(db,"records"),{...data,ownerEmail:effectiveOwnerEmail(),createdAt:serverTimestamp(),createdBy:(currentUser.email||"").toLowerCase(),createdByEmail:(currentUser.email||"").toLowerCase(),createdByName:baseActorName(),updatedAt:serverTimestamp(),updatedBy:(currentUser.email||"").toLowerCase(),updatedByName:baseActorName(),deleted:false});await writeAudit({action:"create",targetType:"record",targetId:ref.id,studentId,studentName:s.name,after:data});}closeModal();toast("服務紀錄已儲存");await loadAll();};
 }
 
