@@ -175,3 +175,17 @@ label{font-weight:700;display:block;margin-bottom:5px}
 .dashboard-summary{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dashboard-pending-text{color:#c2410c;font-weight:900}
 @media(max-width:1100px){.dashboard-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-toolbar input{grid-column:1/-1}}
 @media(max-width:800px){.dashboard-toolbar{grid-template-columns:1fr}.dashboard-toolbar input{grid-column:auto}.dashboard-stats{grid-template-columns:1fr}.dashboard-table-wrap{margin-top:14px}}
+
+.dashboard-student-link{
+  border:0;
+  padding:0;
+  background:transparent;
+  color:#0f6f9c;
+  font:inherit;
+  font-weight:900;
+  cursor:pointer;
+  text-decoration:underline;
+  text-underline-offset:3px;
+}
+.dashboard-student-link:hover{color:#0284c7}
+.dashboard-student-link:focus-visible{outline:2px solid #38bdf8;outline-offset:3px;border-radius:4px}
