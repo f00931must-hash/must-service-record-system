@@ -370,9 +370,12 @@ function renderRecordDashboard(){
     <div class="dashboard-table-wrap">
       <table class="dashboard-table">
         <thead><tr><th>姓名</th><th>科系</th><th>年級</th><th>最後一次修改日期</th><th>修改內容</th></tr></thead>
-        <tbody>${rows.length?rows.map(({student,latest})=>`<tr class="${latest?"":"dashboard-missing"}"><td>${esc(student.name||"")}</td><td>${esc(departmentDisplay(student)||"未填")}</td><td>${esc(dashboardGradeDisplay(student))}</td><td>${latest?esc(dashboardDateText(latest.updatedAt||latest.createdAt)):'<span class="dashboard-pending-text">尚未填寫</span>'}</td><td class="dashboard-summary">${latest?esc(summaryPreview(latest.summary)||"（無內容）"):"—"}</td></tr>`).join(""):'<tr><td colspan="5" class="empty">目前沒有學生資料。</td></tr>'}</tbody>
+        <tbody>${rows.length?rows.map(({student,latest})=>`<tr class="${latest?"":"dashboard-missing"}"><td><button type="button" class="dashboard-student-link" data-dashboard-add-record="${student.id}" title="新增 ${esc(student.name||"")} 的服務紀錄">${esc(student.name||"")}</button></td><td>${esc(departmentDisplay(student)||"未填")}</td><td>${esc(dashboardGradeDisplay(student))}</td><td>${latest?esc(dashboardDateText(latest.updatedAt||latest.createdAt)):'<span class="dashboard-pending-text">尚未填寫</span>'}</td><td class="dashboard-summary">${latest?esc(summaryPreview(latest.summary)||"（無內容）"):"—"}</td></tr>`).join(""):'<tr><td colspan="5" class="empty">目前沒有學生資料。</td></tr>'}</tbody>
       </table>
     </div>`;
+  host.querySelectorAll("[data-dashboard-add-record]").forEach(button=>{
+    button.addEventListener("click",()=>openRecordForm(button.dataset.dashboardAddRecord));
+  });
 }
 
 function renderDashboardFilters(){
@@ -1108,7 +1111,7 @@ function switchView(view){
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  $("pageTitle").textContent={students:"我的學生",dashboard:"填寫儀表板",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",batchAdd:"批次新增紀錄",transfer:"批次轉移",settings:"系統設定"}[view]||"";
+  $("pageTitle").textContent={students:"我的學生",dashboard:"儀表板",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",batchAdd:"批次新增紀錄",transfer:"批次轉移",settings:"系統設定"}[view]||"";
   if(view==="dashboard")renderRecordDashboard(); if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="batchAdd")renderBatchAddView(); if(view==="transfer"&&isTeacher())renderTransferView();
 }
 function openModal(html){$("modalContent").innerHTML=html;$("modal").classList.remove("hidden");}
