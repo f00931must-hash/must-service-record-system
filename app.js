@@ -1,4 +1,4 @@
-const SERVICE_RECORD_BUILD = "v1.5.5-cloud-run-direct";
+const SERVICE_RECORD_BUILD = "v1.5.6-download-date-asc";
 const DEFAULT_AI_ENDPOINT = "https://must-isp-ai-697793258377.asia-east1.run.app/ai/polish";
 console.log("MUST Service Record System build", SERVICE_RECORD_BUILD);
 
@@ -786,6 +786,14 @@ function estimateExcelTextLines(text, capacity=40){
 
 async function exportStudentWorkbook(student, records,{download=true}={}){
   try{
+    // 僅下載檔案改為日期由早到晚；不影響系統畫面目前的排序。
+    records=[...(records||[])].sort((a,b)=>{
+      const dateCompare=String(a?.date||"").localeCompare(String(b?.date||""));
+      if(dateCompare!==0)return dateCompare;
+      const createdCompare=timestampMillis(a?.createdAt)-timestampMillis(b?.createdAt);
+      if(createdCompare!==0)return createdCompare;
+      return String(a?.id||"").localeCompare(String(b?.id||""));
+    });
     const wb = new ExcelJS.Workbook();
     wb.creator = "MUST Resource Center";
     wb.created = new Date();
