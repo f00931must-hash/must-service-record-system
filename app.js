@@ -1093,7 +1093,6 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
     }
 
     ws.views=[{showGridLines:false}];
-    ws.pageSetup.printTitlesRow="9:9";
     ws.pageSetup.horizontalCentered=true;
     ws.printArea=`A1:AD${outputRow-1}`;
 
