@@ -1077,7 +1077,8 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
     });
 
     // 至少保留八筆紀錄的空白列外觀。
-    const minimumEndRow=18;
+    const minimumEndRow=outputRow + Math.max(0, 8-records.length) - 1;
+    let blankRecordNumber=records.length+1;
     while(outputRow<=minimumEndRow){
       ws.mergeCells(outputRow,1,outputRow,2);
       ws.mergeCells(outputRow,3,outputRow,5);
@@ -1085,14 +1086,14 @@ async function exportStudentWorkbook(student, records,{download=true}={}){
       ws.mergeCells(outputRow,10,outputRow,13);
       ws.mergeCells(outputRow,14,outputRow,18);
       ws.mergeCells(outputRow,19,outputRow,30);
-      ws.getCell(outputRow,1).value=outputRow-10;
+      ws.getCell(outputRow,1).value=blankRecordNumber++;
       styleArea(outputRow,1,outputRow,30,{size:10.5,vertical:"middle"});
       ws.getRow(outputRow).height=32;
       outputRow++;
     }
 
     ws.views=[{showGridLines:false}];
-    ws.pageSetup.printTitlesRow="10:10";
+    ws.pageSetup.printTitlesRow="9:9";
     ws.pageSetup.horizontalCentered=true;
     ws.printArea=`A1:AD${outputRow-1}`;
 
