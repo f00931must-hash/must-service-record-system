@@ -225,7 +225,7 @@ async function writeAudit({action,targetType,targetId,studentId="",studentName="
   });
 }
 
-$("loginBtn").onclick=async()=>{ const btn=$("loginBtn");btn.disabled=true;btn.textContent="登入中...";try{await signInWithPopup(auth,provider);}catch(err){const code=err?.code||"";if(["auth/popup-blocked","auth/popup-closed-by-user","auth/cancelled-popup-request"].includes(code)){await signInWithRedirect(auth,provider);return;}alert("Google 登入失敗："+(err.message||code||"未知錯誤"));}finally{btn.disabled=false;btn.textContent="使用 Google 帳號登入";} };
+$("loginBtn").onclick=async()=>{ const btn=$("loginBtn");btn.disabled=true;btn.textContent="登入中...";try{await auth.authStateReady();if(!auth.currentUser)await signInWithPopup(auth,provider);}catch(err){const code=err?.code||"";if(code==="auth/popup-blocked"){await signInWithRedirect(auth,provider);return;}alert("Google 登入失敗："+(err.message||code||"未知錯誤"));}finally{btn.disabled=false;btn.textContent="使用 Google 帳號登入";} };
 $("logoutBtn").onclick=()=>signOut(auth);
 $("modalClose").onclick=closeModal;
 $("addStudentBtn").onclick=()=>openStudentForm();
