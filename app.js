@@ -11,7 +11,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, getDocs, getDoc,
-  query, where, orderBy, limit, serverTimestamp, writeBatch, Timestamp
+  query, where, orderBy, limit, serverTimestamp, writeBatch, runTransaction, Timestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { firebaseConfig, allowedDomains } from "./firebase-config.js";
 
@@ -1124,9 +1124,83 @@ function switchView(view){
   const target=$("view-"+view); if(!target)return;
   target.classList.remove("hidden");
   document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  $("pageTitle").textContent={students:"我的學生",dashboard:"儀表板",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",batchAdd:"批次新增紀錄",transfer:"批次轉移",settings:"系統設定"}[view]||"";
-  if(view==="dashboard")renderRecordDashboard(); if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="batchAdd")renderBatchAddView(); if(view==="transfer"&&isTeacher())renderTransferView();
+  $("pageTitle").textContent={students:"我的學生",dashboard:"儀表板",records:"最近紀錄",history:"操作紀錄",recycle:"我的回收桶",batchDownload:"批次下載",batchAdd:"批次新增紀錄",batchManage:"批次修改與刪除",transfer:"批次轉移",settings:"系統設定"}[view]||"";
+  if(view==="dashboard")renderRecordDashboard(); if(view==="history")loadAuditLogs(); if(view==="recycle")loadRecycleBin(); if(view==="batchDownload")renderBatchDownloadView(); if(view==="batchAdd")renderBatchAddView(); if(view==="batchManage")renderBatchManageView(); if(view==="transfer"&&isTeacher())renderTransferView();
 }
 function openModal(html){$("modalContent").innerHTML=html;$("modal").classList.remove("hidden");}
 function closeModal(){$("modal").classList.add("hidden");$("modalContent").innerHTML="";}
 function toast(text){$("toast").textContent=text;$("toast").classList.remove("hidden");setTimeout(()=>$("toast").classList.add("hidden"),2200);}
+
+async function renderBatchManageView(){
+  const box=$("batchManageBox"), owner=effectiveOwnerEmail(), actor=currentUser.email.toLowerCase();
+  box.textContent="讀取服務紀錄中…";
+  let docs;
+  try{
+    const filters=[where("ownerEmail","==",owner)];
+    if(isAssistant())filters.push(where("createdBy","==",actor));
+    docs=await getDocs(query(collection(db,"records"),...filters));
+  }catch(err){box.textContent="讀取服務紀錄失敗："+err.message;return;}
+  const names=new Map(students.map(s=>[s.id,s.name]));
+  const rows=docs.docs.map(d=>({...d.data(),id:d.id})).filter(r=>!r.deleted&&names.has(r.studentId)&&canManageRecord(r)).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+  const selected=new Set();
+  box.innerHTML=`<p class="hint">先勾選要處理的服務紀錄。修改只套用有填寫的欄位；刪除會移至回收桶。</p>
+    <input class="field" data-search aria-label="搜尋服務紀錄" placeholder="搜尋姓名、日期、學期或內容">
+    <label class="batch-select-all"><input type="checkbox" data-all> 全選目前結果</label>
+    <p data-count aria-live="polite"></p>
+    <div data-list class="batch-student-grid" style="max-height:400px;overflow:auto"></div>
+    <div class="form-grid">
+      <div><label>新服務日期（留白不改）<input class="field" data-date type="date"></label><small>修改日期時會依新日期更新學年度及學期。</small></div>
+      <div class="full"><label>新內容摘述（留白不改）<textarea class="field" data-summary rows="3"></textarea></label></div>
+    </div>
+    <div class="card-actions"><button type="button" class="primary-btn" data-edit>批次修改</button><button type="button" class="ghost-btn" data-remove>批次刪除</button></div>`;
+  const field=k=>box.querySelector("[data-"+k+"]");
+  let visible=rows,busy=false;
+  function count(){
+    field("count").textContent="已選 "+selected.size+" 筆（含其他搜尋結果），目前顯示 "+visible.length+" 筆。";
+    const n=visible.filter(r=>selected.has(r.id)).length;
+    field("all").checked=n>0&&n===visible.length;
+    field("all").indeterminate=n>0&&n<visible.length;
+    for(const key of ["edit","remove"])field(key).disabled=busy||!selected.size;
+  }
+  function render(){
+    const q=field("search").value.trim().toLowerCase();
+    visible=rows.filter(r=>[names.get(r.studentId),r.date,r.summary,r.academicYear+"-"+r.semester].some(v=>String(v||"").toLowerCase().includes(q)));
+    field("list").innerHTML=visible.map(r=>`<label class="batch-student-item"><input type="checkbox" value="${esc(r.id)}" ${selected.has(r.id)?"checked":""}><span><strong>${esc(names.get(r.studentId))}｜${esc(r.date||"")}</strong><small>${esc(r.summary||"")}</small></span></label>`).join("")||'<div class="empty">沒有符合的服務紀錄。</div>';
+    count();
+  }
+  field("list").onchange=e=>{const cb=e.target;if(cb.type!=="checkbox")return;if(cb.checked)selected.add(cb.value);else selected.delete(cb.value);count();};
+  field("search").oninput=render;
+  field("all").onchange=e=>{for(const r of visible){if(e.target.checked)selected.add(r.id);else selected.delete(r.id);}render();};
+  async function apply(remove){
+    if(busy||!selected.size)return;
+    if(selected.size>100)return alert("一次最多處理 100 筆，請減少勾選數量。");
+    const date=field("date").value,summary=field("summary").value.trim();
+    if(!remove&&!date&&!summary)return alert("請至少填寫一個要修改的欄位。");
+    const {academicYear,semester}=date?semesterInfoFromDate(date):{};
+    const patch=remove?{deleted:true,deletedBy:actor}:{...(date?{date,academicYear,semester}:{}),...(summary?{summary}:{})};
+    const verb=remove?"移至回收桶":"套用修改";
+    if(!confirm("確定將選取的 "+selected.size+" 筆服務紀錄"+verb+"？"+(!remove&&summary?" 所選紀錄的內容摘述將一併替換。":"")))return;
+    const targets=rows.filter(r=>selected.has(r.id));
+    busy=true;box.inert=true;count();
+    try{
+      await runTransaction(db,async tx=>{
+        const refs=targets.map(r=>doc(db,"records",r.id));
+        const latest=await Promise.all(refs.map(ref=>tx.get(ref)));
+        latest.forEach((snap,i)=>{
+          const r=snap.data(), before=targets[i];
+          if(!snap.exists()||r.deleted||r.ownerEmail!==owner||!canManageRecord(r)||(timestampMillis(r.updatedAt)!==timestampMillis(before.updatedAt)||r.summary!==before.summary||r.date!==before.date))throw Error("有紀錄已變更或無權限，請重新開啟批次管理。");
+          const now=serverTimestamp();
+          tx.update(refs[i],{...patch,...(remove?{deletedAt:now}:{}),updatedAt:now,updatedBy:actor,updatedByName:baseActorName()});
+          tx.set(doc(collection(db,"auditLogs")),{system:"service-record",action:remove?"delete":"update",targetType:"record",targetId:snap.id,studentId:r.studentId,studentName:names.get(r.studentId)||"",ownerEmail:owner,actorEmail:actor,actorName:actorLabel(),actorRole:accessProfile.role,before:safeClone(r),after:remove?null:patch,detail:"批次管理",createdAt:now});
+        });
+      });
+    }catch(err){alert("批次處理失敗，沒有寫入任何紀錄："+err.message);return;}
+    finally{busy=false;box.inert=false;count();}
+    toast("已"+verb+" "+targets.length+" 筆服務紀錄");
+    await renderBatchManageView();
+    await loadAll().catch(err=>console.error(err));
+  }
+  field("edit").onclick=()=>apply(false);
+  field("remove").onclick=()=>apply(true);
+  render();
+}
