@@ -31,6 +31,7 @@
       <button class="nav" data-view="recycle">🗑 我的回收桶</button>
       <button class="nav" data-view="batchDownload">📥 批次下載</button>
       <button class="nav" data-view="batchAdd">➕ 批次新增紀錄</button>
+      <button class="nav" data-view="batchManage">📝 批次修改與刪除</button>
       <button class="nav teacher-only" data-view="transfer">🔄 批次轉移</button>
       
     </aside>
@@ -61,6 +62,7 @@
       <section id="view-history" class="view hidden"><div class="panel"><h2>操作紀錄</h2><p class="hint">顯示個管老師與所屬協作者的新增、修改、刪除、還原與轉移操作。</p><div id="auditList"></div></div></section>
       <section id="view-recycle" class="view hidden"><div class="panel"><h2>我的回收桶</h2><p class="hint">刪除不會真正消失；個管老師可自行還原。小幫手可查看自己協助刪除的服務紀錄，但不能刪除學生。</p><div id="recycleList"></div></div></section>
       <section id="view-batchDownload" class="view hidden"><div class="panel"><h2>批次下載服務紀錄</h2><p class="hint">個管老師與小幫手皆可勾選多位學生，依指定學期、全部或自訂日期下載。每位學生會產生一份 Excel，並自動打包成 ZIP。</p><div id="batchDownloadList"></div></div></section>
+      <section id="view-batchManage" class="view hidden"><div class="panel"><h2>批次修改與刪除</h2><div id="batchManageBox"></div></div></section>
       <section id="view-batchAdd" class="view hidden"><div class="panel"><h2>批次新增服務紀錄</h2><p class="hint">適合期中關懷、期末關懷、活動參與等多人共用紀錄。每位勾選學生都會新增一筆獨立紀錄，不會覆蓋既有紀錄。</p><div id="batchAddRecordBox"></div></div></section>
       <section id="view-transfer" class="view hidden"><div class="panel"><h2>批次轉移學生</h2><p class="hint">勾選學生後轉交給另一位個管老師。學生及其服務紀錄會一併移交，歷史建立者不會改寫。</p><div id="transferList"></div></div></section>
       <section id="view-settings" class="view hidden teacher-only"><div class="panel"><h2>系統設定</h2><p class="hint">AI 只會處理「內容摘述」，不會傳送學生姓名、學號或其他基本資料。</p><label>AI 安全代理網址</label><input id="aiEndpoint" class="field" value="https://must-isp-ai-697793258377.asia-east1.run.app/ai/polish"><button id="saveSettingsBtn" class="primary-btn">儲存設定</button><div id="migrationBox" class="migration-box teacher-only"></div></div></section>
@@ -71,7 +73,7 @@
   <div id="toast" class="toast hidden"></div>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script type="module" src="./app.js?v=20261116-polish"></script>
+  <script type="module" src="./app.js?v=20261116-batch-manage"></script>
   <script src="./service-submit-guard.js?v=1.0.0"></script>
 </body>
 </html>
